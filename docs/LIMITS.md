@@ -24,3 +24,9 @@ Stop testing and disable the module if any of these occur:
 - DoFun launcher repeatedly restarts.
 - PackageManager throws signature or UID errors in loops.
 - MiXplorer opens but caller receives no result URI.
+
+## Release default limits
+
+**Observed:** Default release behaviour is activity-intent redirection only for radio/music/SAF. Service, bind, broadcast, PendingIntent, UID, signature, provider-authority, Binder-service, SELinux, privileged-permission, and System Framework hooks are not default release behaviour.
+
+**Unsupported:** Treat any claim of real package identity transfer, platform signing, UID reassignment, private Topway service ownership, or full SAF repair as unsupported without new exact-device evidence.

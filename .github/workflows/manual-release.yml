@@ -52,13 +52,33 @@ jobs:
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Resolve Gradle version metadata
+        run: |
+          set -euo pipefail
+          if [ -z "${VERSION_CODE}" ]; then
+            IFS=. read -r major minor patch extra <<< "${VERSION_NAME}"
+            major="${major:-0}"
+            minor="${minor:-0}"
+            patch="${patch:-0}"
+            if [ -n "${extra:-}" ]; then
+              echo "version_name must be numeric dotted form when version_code is omitted" >&2
+              exit 1
+            fi
+            case "$major$minor$patch" in (*[!0-9]*) echo "version_name must be numeric dotted form when version_code is omitted" >&2; exit 1;; esac
+            VERSION_CODE=$((10#$major * 10000 + 10#$minor * 100 + 10#$patch))
+          fi
+          case "$VERSION_CODE" in (*[!0-9]*|'') echo "VERSION_CODE must be a positive integer" >&2; exit 1;; esac
+          if [ "$VERSION_CODE" -le 0 ]; then echo "VERSION_CODE must be greater than zero" >&2; exit 1; fi
+          printf 'VERSION_CODE=%s\n' "$VERSION_CODE" >> "$GITHUB_ENV"
+          printf 'Resolved VERSION_NAME=%s VERSION_CODE=%s\n' "$VERSION_NAME" "$VERSION_CODE"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
       - name: Build, test, and lint release candidate
         run: |
           set -euo pipefail
-          gradle clean test assembleRelease lint --no-daemon
+          if [ -x ./gradlew ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
+          "$GRADLE" clean test assembleRelease lint --no-daemon
           bash -n scripts/*.sh
       - name: Collect artifacts and checksums
         run: |

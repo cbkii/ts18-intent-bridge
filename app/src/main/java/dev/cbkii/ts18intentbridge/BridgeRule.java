@@ -97,13 +97,25 @@ final class BridgeRule {
                 && sourcePackage.equals(packageName);
     }
 
-    boolean matchesSafAction(String action) {
-        if (!enabled || kind != Kind.SAF_PICKER || action == null) return false;
-        return Intent.ACTION_OPEN_DOCUMENT.equals(action)
+    boolean matchesSafAction(Intent intent) {
+        if (!enabled || kind != Kind.SAF_PICKER || intent == null) return false;
+        String action = intent.getAction();
+        if (action == null) return false;
+        if (Intent.ACTION_OPEN_DOCUMENT.equals(action)
                 || Intent.ACTION_OPEN_DOCUMENT_TREE.equals(action)
                 || Intent.ACTION_GET_CONTENT.equals(action)
-                || Intent.ACTION_CREATE_DOCUMENT.equals(action)
-                || Intent.ACTION_PICK.equals(action);
+                || Intent.ACTION_CREATE_DOCUMENT.equals(action)) return true;
+        if (!Intent.ACTION_PICK.equals(action)) return false;
+        return looksLikePickerForActionPick(intent);
+    }
+
+    private static boolean looksLikePickerForActionPick(Intent intent) {
+        String type = intent.getType();
+        if (type != null && (type.startsWith("image/") || type.startsWith("audio/") || type.startsWith("video/")
+                || "*/*".equals(type) || type.startsWith("application/"))) return true;
+        if (intent.getCategories() != null && intent.getCategories().contains(Intent.CATEGORY_OPENABLE)) return true;
+        String data = intent.getDataString();
+        return data != null && (data.startsWith("content://") || data.startsWith("file://"));
     }
 
     private static String normalize(String value) {
