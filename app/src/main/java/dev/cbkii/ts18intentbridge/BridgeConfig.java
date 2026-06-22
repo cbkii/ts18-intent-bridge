@@ -27,6 +27,10 @@ final class BridgeConfig {
 
     static final String KEY_SAF_ENABLED = "saf_enabled";
     static final String KEY_SAF_TARGET_PACKAGES = "saf_target_packages";
+    static final String KEY_PM_COMPAT_ENABLED = "pm_compat_enabled";
+    static final String KEY_VERBOSE_LOGGING = "verbose_logging";
+    static final String KEY_CALLER_ALLOWLIST = "caller_allowlist";
+    static final String KEY_CALLER_BLOCKLIST = "caller_blocklist";
 
     static final String DEFAULT_RADIO_SOURCE_PACKAGE = "com.tw.radio";
     static final String DEFAULT_RADIO_TARGET_PACKAGE = "com.navimods.radio";
@@ -35,6 +39,8 @@ final class BridgeConfig {
     static final String DEFAULT_MUSIC_TARGET_PACKAGE = "com.tw.media";
     static final String DEFAULT_MUSIC_TARGET_CLASS = "com.tw.music.MusicActivity";
     static final String DEFAULT_SAF_TARGET_PACKAGES = "com.mixplorer,com.mixplorer.silver";
+    static final String DEFAULT_CALLER_ALLOWLIST = "com.dofun.variety";
+    static final String DEFAULT_CALLER_BLOCKLIST = "";
 
     private BridgeConfig() {}
 
@@ -53,7 +59,8 @@ final class BridgeConfig {
         String radioTarget = normalizePackage(prefs.getString(KEY_RADIO_TARGET_PACKAGE, DEFAULT_RADIO_TARGET_PACKAGE));
         String radioTargetClass = normalizeClass(prefs.getString(KEY_RADIO_TARGET_CLASS, ""));
         boolean radioUseLaunchIntent = prefs.getBoolean(KEY_RADIO_USE_LAUNCH_INTENT, true);
-        boolean radioSpoofPm = prefs.getBoolean(KEY_RADIO_SPOOF_PM, true);
+        boolean pmCompatEnabled = prefs.getBoolean(KEY_PM_COMPAT_ENABLED, false);
+        boolean radioSpoofPm = pmCompatEnabled && prefs.getBoolean(KEY_RADIO_SPOOF_PM, false);
         if (radioSource != null && radioTarget != null) {
             rules.add(BridgeRule.packageRule(
                     "radio-" + radioSource + "-to-" + radioTarget,
@@ -74,7 +81,7 @@ final class BridgeConfig {
         String musicTarget = normalizePackage(prefs.getString(KEY_MUSIC_TARGET_PACKAGE, DEFAULT_MUSIC_TARGET_PACKAGE));
         String musicTargetClass = normalizeClass(prefs.getString(KEY_MUSIC_TARGET_CLASS, DEFAULT_MUSIC_TARGET_CLASS));
         boolean musicUseLaunchIntent = prefs.getBoolean(KEY_MUSIC_USE_LAUNCH_INTENT, false);
-        boolean musicSpoofPm = prefs.getBoolean(KEY_MUSIC_SPOOF_PM, true);
+        boolean musicSpoofPm = pmCompatEnabled && prefs.getBoolean(KEY_MUSIC_SPOOF_PM, false);
         if (musicSource != null && musicTarget != null) {
             rules.add(BridgeRule.packageRule(
                     "music-" + musicSource + "-to-" + musicTarget,
@@ -112,16 +119,20 @@ final class BridgeConfig {
                 .putString(KEY_RADIO_TARGET_PACKAGE, DEFAULT_RADIO_TARGET_PACKAGE)
                 .putString(KEY_RADIO_TARGET_CLASS, "")
                 .putBoolean(KEY_RADIO_USE_LAUNCH_INTENT, true)
-                .putBoolean(KEY_RADIO_SPOOF_PM, true)
+                .putBoolean(KEY_RADIO_SPOOF_PM, false)
                 .putBoolean(KEY_MUSIC_ENABLED, true)
                 .putString(KEY_MUSIC_SOURCE_PACKAGE, DEFAULT_MUSIC_SOURCE_PACKAGE)
                 .putString(KEY_MUSIC_SOURCE_CLASS, DEFAULT_MUSIC_SOURCE_CLASS)
                 .putString(KEY_MUSIC_TARGET_PACKAGE, DEFAULT_MUSIC_TARGET_PACKAGE)
                 .putString(KEY_MUSIC_TARGET_CLASS, DEFAULT_MUSIC_TARGET_CLASS)
                 .putBoolean(KEY_MUSIC_USE_LAUNCH_INTENT, false)
-                .putBoolean(KEY_MUSIC_SPOOF_PM, true)
+                .putBoolean(KEY_MUSIC_SPOOF_PM, false)
                 .putBoolean(KEY_SAF_ENABLED, true)
                 .putString(KEY_SAF_TARGET_PACKAGES, DEFAULT_SAF_TARGET_PACKAGES)
+                .putBoolean(KEY_PM_COMPAT_ENABLED, false)
+                .putBoolean(KEY_VERBOSE_LOGGING, false)
+                .putString(KEY_CALLER_ALLOWLIST, DEFAULT_CALLER_ALLOWLIST)
+                .putString(KEY_CALLER_BLOCKLIST, DEFAULT_CALLER_BLOCKLIST)
                 .apply();
     }
 
@@ -144,6 +155,30 @@ final class BridgeConfig {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.length() == 0 ? null : trimmed;
+    }
+
+    static boolean isVerboseLoggingEnabled() {
+        XSharedPreferences prefs = new XSharedPreferences(BuildConfig.APPLICATION_ID, PREFS_NAME);
+        try { prefs.reload(); } catch (Throwable ignored) {}
+        return prefs.getBoolean(KEY_VERBOSE_LOGGING, false);
+    }
+
+    static boolean isPmCompatEnabled() {
+        XSharedPreferences prefs = new XSharedPreferences(BuildConfig.APPLICATION_ID, PREFS_NAME);
+        try { prefs.reload(); } catch (Throwable ignored) {}
+        return prefs.getBoolean(KEY_PM_COMPAT_ENABLED, false);
+    }
+
+    static boolean isCallerAllowed(String callerPackage) {
+        if (callerPackage == null) return false;
+        XSharedPreferences prefs = new XSharedPreferences(BuildConfig.APPLICATION_ID, PREFS_NAME);
+        try { prefs.reload(); } catch (Throwable ignored) {}
+        String[] block = splitPackageList(prefs.getString(KEY_CALLER_BLOCKLIST, DEFAULT_CALLER_BLOCKLIST));
+        for (String pkg : block) if (callerPackage.equals(pkg)) return false;
+        String[] allow = splitPackageList(prefs.getString(KEY_CALLER_ALLOWLIST, DEFAULT_CALLER_ALLOWLIST));
+        if (allow.length == 0) return false;
+        for (String pkg : allow) if (callerPackage.equals(pkg)) return true;
+        return false;
     }
 
     static String[] splitPackageList(String value) {

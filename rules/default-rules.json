@@ -8,7 +8,7 @@
       "destinationPackage": "com.navimods.radio",
       "destinationClass": "",
       "useDestinationLaunchIntent": true,
-      "spoofPackageManagerIdentity": true
+      "spoofPackageManagerIdentity": false
     },
     "music": {
       "enabled": true,
@@ -17,7 +17,7 @@
       "destinationPackage": "com.tw.media",
       "destinationClass": "com.tw.music.MusicActivity",
       "useDestinationLaunchIntent": false,
-      "spoofPackageManagerIdentity": true
+      "spoofPackageManagerIdentity": false
     },
     "saf": {
       "enabled": true,
@@ -25,6 +25,21 @@
         "com.mixplorer",
         "com.mixplorer.silver"
       ]
+    },
+    "callerScope": {
+      "allowlist": [
+        "com.dofun.variety"
+      ],
+      "blocklist": []
+    },
+    "packageManagerCompatibility": {
+      "enabled": false,
+      "radio": false,
+      "music": false,
+      "signatureSpoofing": false
+    },
+    "logging": {
+      "verbose": false
     }
   }
 }

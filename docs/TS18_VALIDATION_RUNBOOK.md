@@ -50,7 +50,7 @@ If a launch does not redirect, inspect logs for:
 - hardcoded component names;
 - package existence checks;
 - `resolveActivity` returning stock package;
-- `checkSignatures` or UID checks;
+- signature, UID, permission, or provider-authority checks;
 - target package not resolving from the caller.
 
 Only then adjust PackageManager spoofing or add a caller package to scope.

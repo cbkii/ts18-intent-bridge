@@ -17,6 +17,10 @@ import java.io.File;
 
 public final class MainActivity extends Activity {
     private SharedPreferences prefs;
+    private CheckBox pmCompatEnabled;
+    private CheckBox verboseLogging;
+    private EditText callerAllowlist;
+    private EditText callerBlocklist;
     private CheckBox radioEnabled;
     private EditText radioSourcePackage;
     private EditText radioTargetPackage;
@@ -53,6 +57,12 @@ public final class MainActivity extends Activity {
         root.addView(title);
         root.addView(text("Configurable LSPosed/Vector intent redirection. Defaults are TS18/DoFun-specific. Keep scope narrow and validate each rule separately.", 14));
 
+        pmCompatEnabled = checkBox("Enable bounded PackageManager compatibility shims (off by default)");
+        verboseLogging = checkBox("Enable verbose Xposed logging");
+        callerAllowlist = edit("Caller allowlist, comma-separated", BridgeConfig.DEFAULT_CALLER_ALLOWLIST);
+        callerBlocklist = edit("Caller blocklist, comma-separated", BridgeConfig.DEFAULT_CALLER_BLOCKLIST);
+        addAll(root, pmCompatEnabled, verboseLogging, callerAllowlist, callerBlocklist);
+
         radioEnabled = checkBox("Enable radio: source package -> replacement package");
         root.addView(radioEnabled);
         radioSourcePackage = edit("Radio source package", BridgeConfig.DEFAULT_RADIO_SOURCE_PACKAGE);
@@ -85,8 +95,12 @@ public final class MainActivity extends Activity {
         Button reset = new Button(this);
         reset.setText("Reset defaults");
         reset.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { resetDefaults(); } });
+        Button summary = new Button(this);
+        summary.setText("Debug summary");
+        summary.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { updateStatus(buildDiagnosticSummary()); } });
         buttons.addView(save);
         buttons.addView(reset);
+        buttons.addView(summary);
         root.addView(buttons);
 
         status = text("", 13);
@@ -118,12 +132,17 @@ public final class MainActivity extends Activity {
     }
 
     private void loadFromPrefs() {
+        pmCompatEnabled.setChecked(prefs.getBoolean(BridgeConfig.KEY_PM_COMPAT_ENABLED, false));
+        verboseLogging.setChecked(prefs.getBoolean(BridgeConfig.KEY_VERBOSE_LOGGING, false));
+        callerAllowlist.setText(prefs.getString(BridgeConfig.KEY_CALLER_ALLOWLIST, BridgeConfig.DEFAULT_CALLER_ALLOWLIST));
+        callerBlocklist.setText(prefs.getString(BridgeConfig.KEY_CALLER_BLOCKLIST, BridgeConfig.DEFAULT_CALLER_BLOCKLIST));
+
         radioEnabled.setChecked(prefs.getBoolean(BridgeConfig.KEY_RADIO_ENABLED, true));
         radioSourcePackage.setText(prefs.getString(BridgeConfig.KEY_RADIO_SOURCE_PACKAGE, BridgeConfig.DEFAULT_RADIO_SOURCE_PACKAGE));
         radioTargetPackage.setText(prefs.getString(BridgeConfig.KEY_RADIO_TARGET_PACKAGE, BridgeConfig.DEFAULT_RADIO_TARGET_PACKAGE));
         radioTargetClass.setText(prefs.getString(BridgeConfig.KEY_RADIO_TARGET_CLASS, ""));
         radioUseLaunchIntent.setChecked(prefs.getBoolean(BridgeConfig.KEY_RADIO_USE_LAUNCH_INTENT, true));
-        radioSpoofPm.setChecked(prefs.getBoolean(BridgeConfig.KEY_RADIO_SPOOF_PM, true));
+        radioSpoofPm.setChecked(prefs.getBoolean(BridgeConfig.KEY_RADIO_SPOOF_PM, false));
 
         musicEnabled.setChecked(prefs.getBoolean(BridgeConfig.KEY_MUSIC_ENABLED, true));
         musicSourcePackage.setText(prefs.getString(BridgeConfig.KEY_MUSIC_SOURCE_PACKAGE, BridgeConfig.DEFAULT_MUSIC_SOURCE_PACKAGE));
@@ -131,13 +150,15 @@ public final class MainActivity extends Activity {
         musicTargetPackage.setText(prefs.getString(BridgeConfig.KEY_MUSIC_TARGET_PACKAGE, BridgeConfig.DEFAULT_MUSIC_TARGET_PACKAGE));
         musicTargetClass.setText(prefs.getString(BridgeConfig.KEY_MUSIC_TARGET_CLASS, BridgeConfig.DEFAULT_MUSIC_TARGET_CLASS));
         musicUseLaunchIntent.setChecked(prefs.getBoolean(BridgeConfig.KEY_MUSIC_USE_LAUNCH_INTENT, false));
-        musicSpoofPm.setChecked(prefs.getBoolean(BridgeConfig.KEY_MUSIC_SPOOF_PM, true));
+        musicSpoofPm.setChecked(prefs.getBoolean(BridgeConfig.KEY_MUSIC_SPOOF_PM, false));
 
         safEnabled.setChecked(prefs.getBoolean(BridgeConfig.KEY_SAF_ENABLED, true));
         safTargetPackages.setText(prefs.getString(BridgeConfig.KEY_SAF_TARGET_PACKAGES, BridgeConfig.DEFAULT_SAF_TARGET_PACKAGES));
     }
 
     private void savePrefs() {
+        String allow = packageListOrEmpty(callerAllowlist);
+        String block = packageListOrEmpty(callerBlocklist);
         String radioSource = requiredPackage(radioSourcePackage, radioEnabled.isChecked());
         String radioTarget = requiredPackage(radioTargetPackage, radioEnabled.isChecked());
         String radioClass = optionalClass(radioTargetClass);
@@ -147,7 +168,7 @@ public final class MainActivity extends Activity {
         String musicTargetCls = optionalClass(musicTargetClass);
         String safTargets = requiredPackageList(safTargetPackages, safEnabled.isChecked());
 
-        if (radioSource == null || radioTarget == null || radioClass == INVALID
+        if (allow == null || block == null || radioSource == null || radioTarget == null || radioClass == INVALID
                 || musicSource == null || musicSourceCls == INVALID || musicTarget == null || musicTargetCls == INVALID
                 || safTargets == null) {
             updateStatus("Not saved: fix invalid package/class names.");
@@ -155,6 +176,10 @@ public final class MainActivity extends Activity {
         }
 
         prefs.edit()
+                .putBoolean(BridgeConfig.KEY_PM_COMPAT_ENABLED, pmCompatEnabled.isChecked())
+                .putBoolean(BridgeConfig.KEY_VERBOSE_LOGGING, verboseLogging.isChecked())
+                .putString(BridgeConfig.KEY_CALLER_ALLOWLIST, allow)
+                .putString(BridgeConfig.KEY_CALLER_BLOCKLIST, block)
                 .putBoolean(BridgeConfig.KEY_RADIO_ENABLED, radioEnabled.isChecked())
                 .putString(BridgeConfig.KEY_RADIO_SOURCE_PACKAGE, radioSource)
                 .putString(BridgeConfig.KEY_RADIO_TARGET_PACKAGE, radioTarget)
@@ -226,6 +251,38 @@ public final class MainActivity extends Activity {
             b.append(p);
         }
         return b.toString();
+    }
+
+    private String packageListOrEmpty(EditText field) {
+        String value = BridgeConfig.normalize(field.getText().toString());
+        if (value == null) {
+            field.setError(null);
+            return "";
+        }
+        String[] packages = BridgeConfig.splitPackageList(value);
+        if (packages.length == 0) {
+            markInvalid(field);
+            return null;
+        }
+        field.setError(null);
+        StringBuilder b = new StringBuilder();
+        for (String p : packages) {
+            if (b.length() > 0) b.append(',');
+            b.append(p);
+        }
+        return b.toString();
+    }
+
+    private String buildDiagnosticSummary() {
+        return "Diagnostic summary\n"
+                + "Android SDK: " + android.os.Build.VERSION.SDK_INT + "\n"
+                + "Module: " + BuildConfig.APPLICATION_ID + " " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n"
+                + "Allowlist: " + callerAllowlist.getText() + "\n"
+                + "Blocklist: " + callerBlocklist.getText() + "\n"
+                + "Radio: " + radioSourcePackage.getText() + " -> " + radioTargetPackage.getText() + "/" + radioTargetClass.getText() + " enabled=" + radioEnabled.isChecked() + "\n"
+                + "Music: " + musicSourcePackage.getText() + "/" + musicSourceClass.getText() + " -> " + musicTargetPackage.getText() + "/" + musicTargetClass.getText() + " enabled=" + musicEnabled.isChecked() + "\n"
+                + "SAF: " + safTargetPackages.getText() + " enabled=" + safEnabled.isChecked() + "\n"
+                + "PM compat: " + pmCompatEnabled.isChecked() + "; verbose: " + verboseLogging.isChecked();
     }
 
     private void makePreferencesReadableBestEffort() {

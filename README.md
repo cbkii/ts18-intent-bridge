@@ -12,13 +12,13 @@ Defaults are TS18-specific, but all replacement package names are user-configura
 - `com.tw.music` / `com.tw.music.MusicActivity` → configurable music replacement, default `com.tw.media` / `com.tw.music.MusicActivity`.
 - SAF / DocumentsUI picker intents → configurable file-manager package candidates, default `com.mixplorer,com.mixplorer.silver`.
 
-There is **no** `com.tw.radio → com.tw.media` rule.
+Radio and music bridges are separate; no cross-route fallback rule is shipped.
 
 ## Implemented hook layers
 
 - Caller-side intent rewriting for `startActivity`, `startActivityForResult`, `startService`, `bindService`, and broadcast sender paths.
 - SAF picker rewriting for `ACTION_OPEN_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`, `ACTION_GET_CONTENT`, `ACTION_CREATE_DOCUMENT`, and `ACTION_PICK` when the intent is implicit or explicitly/restrictively aimed at DocumentsUI.
-- Caller-side `PackageManager` compatibility hooks for selected package, component, signature, and resolver calls.
+- Caller-side `PackageManager` compatibility hooks for selected package, component, launch-intent, and resolver calls.
 - Optional system/framework hook points for Android 10, intentionally documented as high risk and not part of the first validation pass.
 
 ## What this cannot do
@@ -89,3 +89,11 @@ See `docs/TS18_VALIDATION_RUNBOOK.md` and `docs/CONFIGURATION.md`.
 - MiXplorer package reference: https://mixplorer.com/
 - CorePatch precedent: https://github.com/LSPosed/CorePatch
 - XSpoofSignatures precedent: https://github.com/Xposed-Modules-Repo/dev.rushii.xspoofsignatures
+
+## Release readiness update
+
+- Runtime scope is guarded by a configurable caller allowlist. The default is `com.dofun.variety`; System Framework/`android` is not enabled by default.
+- PackageManager compatibility is a bounded caller-side shim and is off by default. It covers selected installed/launch/resolve/query APIs only when enabled; it does not spoof signatures, Linux UIDs, privileged permissions, provider authorities, private services, or hardware control.
+- The module UI stores editable defaults for SAF (`com.mixplorer,com.mixplorer.silver`), radio (`com.tw.radio` to `com.navimods.radio`), and music (`com.tw.music/com.tw.music.MusicActivity` to `com.tw.media/com.tw.music.MusicActivity`).
+- Manual releases are produced with `.github/workflows/manual-release.yml`; trigger it with `workflow_dispatch`, provide a version name, and keep prerelease enabled until TS18 logs validate the artifact.
+
