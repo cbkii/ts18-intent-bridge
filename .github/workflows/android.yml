@@ -18,4 +18,6 @@ jobs:
         with:
           gradle-version: 8.10.2
       - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug test --no-daemon
+      - name: Shell syntax
+        run: bash -n scripts/*.sh

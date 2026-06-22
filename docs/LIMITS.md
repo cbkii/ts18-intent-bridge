@@ -4,7 +4,6 @@
 
 - Rewrite `Intent` objects before the caller sends them.
 - Make `PackageManager` lookups in scoped caller processes delegate from stock package names to replacement package names.
-- Make selected `checkSignatures(source, destination)` calls return `SIGNATURE_MATCH` inside scoped processes.
 - Preserve original intent extras, type, data, categories and flags where possible.
 
 ## Not actually possible with this module alone

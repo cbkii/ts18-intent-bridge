@@ -9,7 +9,7 @@ Inside scoped caller processes, this module can intercept selected Java calls an
 - `PackageManager.getApplicationInfo()` results;
 - `PackageManager.getLaunchIntentForPackage()` results;
 - component info returned by `getActivityInfo`, `getServiceInfo`, and `getProviderInfo`;
-- selected `checkSignatures(String, String)` results;
+- selected install/launch/resolve/query metadata results;
 - selected `resolveActivity` and query results.
 
 This is caller-side compatibility only. It is useful when a launcher checks "does `com.tw.radio` exist?" before launching a hardcoded component.
@@ -36,7 +36,7 @@ PackageManager compatibility is enabled per rule because TS18 launcher integrati
 Disable PackageManager spoofing if:
 
 - the target app launches correctly with pure intent rewrite;
-- the caller performs signature or UID-sensitive work;
+- the caller performs signature, UID, permission, or provider-authority-sensitive work;
 - logs show signature mismatch, provider authority confusion, or repeated crashes.
 
 ## Provider and service authority policy

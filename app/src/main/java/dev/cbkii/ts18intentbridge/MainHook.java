@@ -8,12 +8,14 @@ public final class MainHook implements IXposedHookLoadPackage {
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) {
         if (lpparam == null || lpparam.classLoader == null || lpparam.packageName == null) return;
 
-        // LSPosed/Vector scope controls which processes receive this module.
-        // Keep code side permissive so the module can cover DoFun, Topway services, target apps, and optional android framework scope.
         String caller = lpparam.packageName;
+        if (!BridgeConfig.isCallerAllowed(caller)) {
+            BridgeLog.v("Skipping unallowed process " + caller + " process=" + lpparam.processName);
+            return;
+        }
         try {
             hookCallerSideIntentSends(lpparam, caller);
-            PackageIdentitySpoofer.hook(lpparam.classLoader, caller);
+            if (BridgeConfig.isPmCompatEnabled()) PackageIdentitySpoofer.hook(lpparam.classLoader, caller);
             if ("android".equals(caller)) hookSystemServerIntentSends(lpparam, caller);
             BridgeLog.i("Loaded in " + caller + " process=" + lpparam.processName);
         } catch (Throwable t) {
