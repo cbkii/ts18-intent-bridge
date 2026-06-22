@@ -100,6 +100,7 @@ public final class MainActivity extends Activity {
         reset.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { resetDefaults(); } });
         Button summary = new Button(this);
         summary.setText(R.string.button_check_config);
+        //summary.setText(R.string.button_debug_summary);
         summary.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { updateStatus(buildDiagnosticSummary()); } });
         buttons.addView(save);
         buttons.addView(reset);
