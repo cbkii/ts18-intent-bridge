@@ -18,6 +18,13 @@ android {
         versionName ((envVersionName == null || envVersionName.trim().isEmpty()) ? "0.2.0-dev" : envVersionName.trim())
     }
 
+    lint {
+        // This module is a TS18 Android 10 / API 29 private side-loaded Xposed helper, not a Google Play APK.
+        // Keeping targetSdk 29 preserves exact-device behavior for background starts, storage, boot, and OEM integration
+        // until TS18 physical-device validation proves a higher target SDK is safe.
+        disable "ExpiredTargetSdkVersion"
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"

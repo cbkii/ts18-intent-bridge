@@ -2,6 +2,12 @@
 
 **Inferred / Requires device validation:** CI can build and test the APK without a TS18. A real TS18 validation pass must still be performed before broad enablement.
 
+## Distribution and target SDK policy
+
+**Inferred / Requires device validation:** This repository currently produces GitHub release APKs for private side-loading on TS18 Android 10 / API 29 head units. It is not configured as a Google Play release pipeline.
+
+The app intentionally keeps `targetSdk 29` to preserve Android 10 TS18 behaviour for Xposed/Vector preference sharing, background launches, boot/OEM integration, and storage expectations until exact-device TS18 validation proves that a higher target SDK is safe. The release lint policy narrowly disables only `ExpiredTargetSdkVersion` for that reason. Do not treat these APKs as Play-compatible artifacts without adding a separate Play-compatible variant, raising the target SDK, and validating all target-SDK behaviour changes.
+
 ## Manual GitHub release
 
 Workflow path: `.github/workflows/manual-release.yml`.
