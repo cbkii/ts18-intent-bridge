@@ -1,5 +1,6 @@
 package dev.cbkii.ts18intentbridge;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -90,13 +91,13 @@ public final class MainActivity extends Activity {
         LinearLayout buttons = new LinearLayout(this);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
         Button save = new Button(this);
-        save.setText("Save");
+        save.setText(R.string.button_save);
         save.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { savePrefs(); } });
         Button reset = new Button(this);
-        reset.setText("Reset defaults");
+        reset.setText(R.string.button_reset_defaults);
         reset.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { resetDefaults(); } });
         Button summary = new Button(this);
-        summary.setText("Debug summary");
+        summary.setText(R.string.button_debug_summary);
         summary.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { updateStatus(buildDiagnosticSummary()); } });
         buttons.addView(save);
         buttons.addView(reset);
@@ -285,6 +286,7 @@ public final class MainActivity extends Activity {
                 + "PM compat: " + pmCompatEnabled.isChecked() + "; verbose: " + verboseLogging.isChecked();
     }
 
+    @SuppressLint("SetWorldReadable")
     private void makePreferencesReadableBestEffort() {
         try {
             File dataDir = new File(getApplicationInfo().dataDir);
@@ -292,6 +294,8 @@ public final class MainActivity extends Activity {
             File prefsFile = new File(prefsDir, BridgeConfig.PREFS_NAME + ".xml");
             dataDir.setExecutable(true, false);
             prefsDir.setExecutable(true, false);
+            // Legacy XSharedPreferences on TS18/Vector reads module preferences from hooked caller processes.
+            // This is intentionally best-effort, scoped to this module prefs file, and reversible by disabling the module.
             prefsDir.setReadable(true, false);
             prefsFile.setReadable(true, false);
         } catch (Throwable ignored) {
@@ -300,7 +304,7 @@ public final class MainActivity extends Activity {
     }
 
     private void updateStatus(String message) {
-        status.setText("Status: " + message + "\nPrefs: " + BuildConfig.APPLICATION_ID + "/" + BridgeConfig.PREFS_NAME);
+        status.setText(getString(R.string.status_format, message, BuildConfig.APPLICATION_ID, BridgeConfig.PREFS_NAME));
     }
 
     private EditText edit(String hint, String value) {
