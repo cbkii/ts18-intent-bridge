@@ -1,0 +1,30 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "dev.cbkii.ts18intentbridge"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "dev.cbkii.ts18intentbridge"
+        minSdk 29
+        targetSdk 29
+        versionCode 2
+        versionName "0.2.0-dev"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    // Legacy Xposed API is compile-only. Vector/JingMatrix supports legacy and modern module compatibility.
+    compileOnly "de.robv.android.xposed:api:82"
+}

@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "notes": "Documentation copy of default configurable rules. Runtime defaults are in BridgeConfig.java and can be changed in the module UI without editing code.",
+  "defaults": {
+    "radio": {
+      "enabled": true,
+      "sourcePackage": "com.tw.radio",
+      "destinationPackage": "com.navimods.radio",
+      "destinationClass": "",
+      "useDestinationLaunchIntent": true,
+      "spoofPackageManagerIdentity": true
+    },
+    "music": {
+      "enabled": true,
+      "sourcePackage": "com.tw.music",
+      "sourceClass": "com.tw.music.MusicActivity",
+      "destinationPackage": "com.tw.media",
+      "destinationClass": "com.tw.music.MusicActivity",
+      "useDestinationLaunchIntent": false,
+      "spoofPackageManagerIdentity": true
+    },
+    "saf": {
+      "enabled": true,
+      "destinationPackages": [
+        "com.mixplorer",
+        "com.mixplorer.silver"
+      ]
+    }
+  }
+}
