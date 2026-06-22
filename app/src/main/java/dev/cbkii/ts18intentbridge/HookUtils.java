@@ -57,7 +57,7 @@ final class HookUtils {
     static void rewriteIntentArgs(XC_MethodHook.MethodHookParam param, String callerPackage, String hookPoint,
             BridgeOperation operation) {
         if (param == null || param.args == null) return;
-        Context context = findContext(param.args);
+Context context = param.thisObject instanceof Context ? (Context) param.thisObject : findContext(param.args);
         for (int i = 0; i < param.args.length; i++) {
             Object arg = param.args[i];
             if (arg instanceof Intent) {
