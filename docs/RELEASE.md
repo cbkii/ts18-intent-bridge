@@ -28,3 +28,13 @@ Unsigned release APKs are labelled by `ARTIFACT_NOTICE.txt`. Future signing supp
 5. Enable PackageManager compatibility only if logs show a specific caller-side package lookup needs it.
 6. Keep System Framework scope disabled unless app-side logs prove it is required.
 7. Attach diagnostic summaries and filtered logs to release notes when available.
+
+## Optional local Gradle wrapper generation
+
+This repository intentionally does not commit Gradle wrapper binaries. If a maintainer wants a wrapper for local or fork-specific use, generate it from a trusted Gradle installation and review the generated files before committing them in that fork:
+
+```bash
+gradle wrapper --gradle-version 8.10.2 --distribution-type bin
+```
+
+If you choose to commit wrapper artifacts later, verify the distribution URL, checksum policy, and provenance of `gradle/wrapper/gradle-wrapper.jar` before merging.

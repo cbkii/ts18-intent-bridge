@@ -50,6 +50,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.10.2
@@ -64,7 +66,12 @@ jobs:
           mkdir -p release-artifacts
           find app/build/outputs/apk/release -name '*.apk' -print -exec cp {} release-artifacts/ \;
           find app/build/outputs/mapping app/build/reports -type f \( -name 'mapping.txt' -o -name '*.html' -o -name '*.xml' \) -exec cp --parents {} release-artifacts/ \; || true
-          (cd release-artifacts && sha256sum $(find . -type f -name '*.apk' -printf '%P\n') > SHA256SUMS.txt)
+          apk_count=$(find release-artifacts -type f -name '*.apk' | wc -l)
+          if [ "$apk_count" -eq 0 ]; then
+            echo 'No release APK was produced.' >&2
+            exit 1
+          fi
+          (cd release-artifacts && find . -type f -name '*.apk' -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
           if find release-artifacts -name '*unsigned*.apk' -o -name '*release*.apk' | grep -q .; then
             printf 'Release APKs are unsigned unless repository signing configuration and secrets are added. Future signing secrets: KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD.\n' > release-artifacts/ARTIFACT_NOTICE.txt
           fi
