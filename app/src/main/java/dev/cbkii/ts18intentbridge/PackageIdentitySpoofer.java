@@ -5,7 +5,6 @@ import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.content.pm.ProviderInfo;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
@@ -38,7 +37,6 @@ final class PackageIdentitySpoofer {
         hookComponentFirstArg(apm, callerPackage, "getActivityInfo");
         hookComponentFirstArg(apm, callerPackage, "getServiceInfo");
         hookComponentFirstArg(apm, callerPackage, "getProviderInfo");
-        hookCheckSignatures(apm, callerPackage);
         hookIntentQuery(apm, callerPackage, "resolveActivity");
         hookIntentQuery(apm, callerPackage, "queryIntentActivities");
         hookIntentQuery(apm, callerPackage, "queryIntentServices");
@@ -97,29 +95,6 @@ final class PackageIdentitySpoofer {
                 });
             } catch (Throwable t) {
                 BridgeLog.e("Failed component PM hook " + methodName + " in " + callerPackage, t);
-            }
-        }
-    }
-
-    private static void hookCheckSignatures(Class<?> clazz, final String callerPackage) {
-        for (final Method method : clazz.getDeclaredMethods()) {
-            if (!"checkSignatures".equals(method.getName())) continue;
-            Class<?>[] p = method.getParameterTypes();
-            if (p.length != 2 || p[0] != String.class || p[1] != String.class) continue;
-            try {
-                XposedBridge.hookMethod(method, new XC_MethodHook() {
-                    @Override protected void beforeHookedMethod(MethodHookParam param) {
-                        String a = (String) param.args[0];
-                        String b = (String) param.args[1];
-                        BridgeRule rule = BridgeRules.identityRuleForPair(a, b);
-                        if (rule != null) {
-                            param.setResult(PackageManager.SIGNATURE_MATCH);
-                            BridgeLog.i("Spoofed checkSignatures(" + a + ", " + b + ") as MATCH for " + callerPackage);
-                        }
-                    }
-                });
-            } catch (Throwable t) {
-                BridgeLog.e("Failed checkSignatures hook in " + callerPackage, t);
             }
         }
     }

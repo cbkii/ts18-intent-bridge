@@ -4,7 +4,7 @@ import de.robv.android.xposed.XposedBridge;
 
 final class BridgeLog {
     private static final String TAG = "TS18IntentBridge";
-    private static final boolean VERBOSE = false;
+    
 
     private BridgeLog() {}
 
@@ -13,7 +13,7 @@ final class BridgeLog {
     }
 
     static void v(String message) {
-        if (VERBOSE) XposedBridge.log(TAG + ": " + message);
+        if (BridgeConfig.isVerboseLoggingEnabled()) XposedBridge.log(TAG + ": " + message);
     }
 
     static void w(String message) {

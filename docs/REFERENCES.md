@@ -44,3 +44,19 @@
 - `com.dofun.variety_V9.7.2.367.260312.apk`: launcher APK for static inspection.
 - `com.tw.music_TW_THEME.20240715.apk` and `com.tw.music_ac.apk`: stock/related music APKs.
 - `NavRadio_Plus_v4_00_PREMIUM (1).apk`: reference APK only; validate minSdk/target compatibility before using on TS18.
+
+## 2026 release-readiness references
+
+- ReZygisk repository: https://github.com/PerformanC/ReZygisk — **Precedent** for the device-side Zygisk-compatible injection environment; use release notes before recommending a specific device build.
+- ReZygisk releases: https://github.com/PerformanC/ReZygisk/releases — **Precedent** for packaging/version checks before TS18 install.
+- JingMatrix/Vector repository: https://github.com/JingMatrix/Vector — **Precedent** for the modern LSPosed-compatible runtime expected on the target device.
+- JingMatrix/Vector releases: https://github.com/JingMatrix/Vector/releases — **Precedent** for Vector/LSPosed API compatibility notes, including Android 10 fixes when present.
+- LSPosed modern API wiki: https://github.com/LSPosed/LSPosed/wiki/Develop-Xposed-Modules-Using-Modern-Xposed-API — **Precedent** for `META-INF/xposed/scope.list` and `module.prop` metadata.
+- Legacy Xposed tutorial: https://github.com/rovo89/XposedBridge/wiki/Development-tutorial — **Precedent** for the legacy `IXposedHookLoadPackage` entrypoint retained by this module.
+- Android intents and filters: https://developer.android.com/guide/components/intents-filters — **Precedent** for preserving action, data, MIME type, categories, extras, and flags while redirecting launches.
+- Android `PackageManager`: https://developer.android.com/reference/android/content/pm/PackageManager — **Precedent** for the bounded caller-visible metadata APIs this module can shim.
+- Android Storage Access Framework overview: https://developer.android.com/guide/topics/providers/document-provider — **Precedent** for SAF/DocumentsProvider limitations, persisted URI grants, and why a generic file manager is not automatically a full DocumentsUI replacement.
+- Android documents/files training: https://developer.android.com/training/data-storage/shared/documents-files — **Precedent** for user-facing picker flows and result expectations.
+- MiXplorer official site: https://mixplorer.com/ — **Precedent** only for package-reference validation; this repo must not redistribute or modify MiXplorer/MiXplorer Silver APKs.
+- LSPosed/CorePatch: https://github.com/LSPosed/CorePatch — **Precedent** for PackageManager hook boundaries and why global signature/package spoofing is not appropriate here.
+- XSpoofSignatures: https://github.com/Xposed-Modules-Repo/dev.rushii.xspoofsignatures — **Precedent** demonstrating that signature spoofing is a separate high-risk problem space; this module intentionally does not implement it.

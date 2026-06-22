@@ -1,6 +1,10 @@
 plugins { id "com.android.application" }
 
 android {
+    buildFeatures {
+        buildConfig true
+    }
+
     namespace "dev.cbkii.ts18intentbridge"
     compileSdk 35
 
@@ -8,8 +12,10 @@ android {
         applicationId "dev.cbkii.ts18intentbridge"
         minSdk 29
         targetSdk 29
-        versionCode 2
-        versionName "0.2.0-dev"
+        def envVersionCode = System.getenv("VERSION_CODE")
+        def envVersionName = System.getenv("VERSION_NAME")
+        versionCode ((envVersionCode == null || envVersionCode.trim().isEmpty()) ? 2 : envVersionCode.trim().toInteger())
+        versionName ((envVersionName == null || envVersionName.trim().isEmpty()) ? "0.2.0-dev" : envVersionName.trim())
     }
 
     buildTypes {
@@ -27,4 +33,6 @@ android {
 dependencies {
     // Legacy Xposed API is compile-only. Vector/JingMatrix supports legacy and modern module compatibility.
     compileOnly "de.robv.android.xposed:api:82"
+    testCompileOnly "de.robv.android.xposed:api:82"
+    testImplementation "junit:junit:4.13.2"
 }
