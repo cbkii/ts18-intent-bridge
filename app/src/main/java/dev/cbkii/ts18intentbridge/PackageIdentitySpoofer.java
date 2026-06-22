@@ -31,7 +31,6 @@ final class PackageIdentitySpoofer {
         }
         hookPackageStringFirstArg(apm, callerPackage, "getPackageInfo");
         hookPackageStringFirstArg(apm, callerPackage, "getApplicationInfo");
-        hookPackageStringFirstArg(apm, callerPackage, "getPackageUid");
         hookPackageStringFirstArg(apm, callerPackage, "getInstallerPackageName");
         hookPackageStringFirstArg(apm, callerPackage, "getLaunchIntentForPackage");
         hookComponentFirstArg(apm, callerPackage, "getActivityInfo");
@@ -49,16 +48,17 @@ final class PackageIdentitySpoofer {
             if (parameterTypes.length == 0 || parameterTypes[0] != String.class) continue;
             try {
                 XposedBridge.hookMethod(method, new XC_MethodHook() {
-                    String sourcePackage;
-                    BridgeRule rule;
                     @Override protected void beforeHookedMethod(MethodHookParam param) {
-                        sourcePackage = (String) param.args[0];
-                        rule = BridgeRules.firstIdentityRuleForSource(sourcePackage);
+                        if (param.args == null || param.args.length == 0) return;
+                        String sourcePackage = (String) param.args[0];
+                        BridgeRule rule = BridgeRules.firstIdentityRuleForSource(sourcePackage);
                         if (rule == null) return;
+                        param.setObjectExtra("ts18.rule", rule);
                         param.args[0] = rule.destinationPackage;
                         BridgeLog.v("PM delegate " + methodName + "(" + sourcePackage + ") -> " + rule.destinationPackage + " for " + callerPackage);
                     }
                     @Override protected void afterHookedMethod(MethodHookParam param) {
+                        BridgeRule rule = (BridgeRule) param.getObjectExtra("ts18.rule");
                         if (rule == null) return;
                         Object result = param.getResult();
                         if (result instanceof PackageInfo) spoofPackageInfo((PackageInfo) result, rule);
@@ -79,16 +79,18 @@ final class PackageIdentitySpoofer {
             if (parameterTypes.length == 0 || parameterTypes[0] != ComponentName.class) continue;
             try {
                 XposedBridge.hookMethod(method, new XC_MethodHook() {
-                    BridgeRule rule;
                     @Override protected void beforeHookedMethod(MethodHookParam param) {
+                        if (param.args == null || param.args.length == 0) return;
                         ComponentName component = (ComponentName) param.args[0];
                         if (component == null) return;
-                        rule = BridgeRules.firstIdentityRuleForSource(component.getPackageName());
+                        BridgeRule rule = BridgeRules.firstIdentityRuleForSource(component.getPackageName());
                         if (rule == null) return;
+                        param.setObjectExtra("ts18.rule", rule);
                         String dstClass = rule.destinationClass != null ? rule.destinationClass : component.getClassName();
                         param.args[0] = new ComponentName(rule.destinationPackage, dstClass);
                     }
                     @Override protected void afterHookedMethod(MethodHookParam param) {
+                        BridgeRule rule = (BridgeRule) param.getObjectExtra("ts18.rule");
                         if (rule == null) return;
                         spoofInfoObject(param.getResult(), rule);
                     }
@@ -107,7 +109,7 @@ final class PackageIdentitySpoofer {
             try {
                 XposedBridge.hookMethod(method, new XC_MethodHook() {
                     @Override protected void beforeHookedMethod(MethodHookParam param) {
-                        HookUtils.rewriteIntentArgs(param, callerPackage, "PackageManager." + methodName);
+                        HookUtils.rewriteIntentArgs(param, callerPackage, "PackageManager." + methodName, BridgeOperation.PACKAGE_QUERY);
                     }
                     @Override protected void afterHookedMethod(MethodHookParam param) {
                         Object result = param.getResult();

@@ -37,3 +37,9 @@ Modern API migration should be a separate branch after:
 ## Compatibility expectation
 
 Vector/LSPosed scope remains the main safety boundary. Do not implement broad internal allowlists that silently hook every app.
+
+## Final release relationship
+
+**Precedent:** ReZygisk is treated as the lower Zygisk environment provider on rooted devices. Vector/LSPosed is the ART/Xposed framework that loads this Java module.
+
+**Observed:** This APK is not a native Zygisk module: it ships no `zygisk/` shared library and does not implement Magisk native module entry points. The release remains legacy Xposed-compatible for Vector/LSPosed.

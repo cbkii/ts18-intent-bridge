@@ -2,6 +2,7 @@ package dev.cbkii.ts18intentbridge;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
@@ -56,7 +57,8 @@ public final class MainActivity extends Activity {
 
         TextView title = text("TS18 Intent Bridge", 22);
         root.addView(title);
-        root.addView(text("Configurable LSPosed/Vector intent redirection. Defaults are TS18/DoFun-specific. Keep scope narrow and validate each rule separately.", 14));
+        root.addView(text("Configurable legacy Xposed module for LSPosed/Vector intent redirection. Defaults are TS18/DoFun-specific. Keep scope narrow and validate each rule separately.", 14));
+        root.addView(text("FIRST RUN: enable this module only for com.dofun.variety first. This does not transfer package identity, signing, UID, SELinux domain, privileged permissions, provider authorities, Binder services, or Topway private authority. Disable the module in LSPosed/Vector and reboot if DoFun, SystemUI, or launcher loops occur.", 13));
 
         pmCompatEnabled = checkBox("Enable bounded PackageManager compatibility shims (off by default)");
         verboseLogging = checkBox("Enable verbose Xposed logging");
@@ -97,7 +99,8 @@ public final class MainActivity extends Activity {
         reset.setText(R.string.button_reset_defaults);
         reset.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { resetDefaults(); } });
         Button summary = new Button(this);
-        summary.setText(R.string.button_debug_summary);
+        summary.setText(R.string.button_check_config);
+        //summary.setText(R.string.button_debug_summary);
         summary.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { updateStatus(buildDiagnosticSummary()); } });
         buttons.addView(save);
         buttons.addView(reset);
@@ -275,15 +278,40 @@ public final class MainActivity extends Activity {
     }
 
     private String buildDiagnosticSummary() {
-        return "Diagnostic summary\n"
+        String radioTarget = radioTargetPackage.getText().toString();
+        String musicTarget = musicTargetPackage.getText().toString();
+        return "Module status / current config\n"
                 + "Android SDK: " + android.os.Build.VERSION.SDK_INT + "\n"
                 + "Module: " + BuildConfig.APPLICATION_ID + " " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")\n"
                 + "Allowlist: " + callerAllowlist.getText() + "\n"
                 + "Blocklist: " + callerBlocklist.getText() + "\n"
-                + "Radio: " + radioSourcePackage.getText() + " -> " + radioTargetPackage.getText() + "/" + radioTargetClass.getText() + " enabled=" + radioEnabled.isChecked() + "\n"
-                + "Music: " + musicSourcePackage.getText() + "/" + musicSourceClass.getText() + " -> " + musicTargetPackage.getText() + "/" + musicTargetClass.getText() + " enabled=" + musicEnabled.isChecked() + "\n"
-                + "SAF: " + safTargetPackages.getText() + " enabled=" + safEnabled.isChecked() + "\n"
-                + "PM compat: " + pmCompatEnabled.isChecked() + "; verbose: " + verboseLogging.isChecked();
+                + "Radio: " + radioSourcePackage.getText() + " -> " + radioTarget + "/" + radioTargetClass.getText() + " enabled=" + radioEnabled.isChecked() + " target=" + describePackage(radioTarget) + "\n"
+                + "Music: " + musicSourcePackage.getText() + "/" + musicSourceClass.getText() + " -> " + musicTarget + "/" + musicTargetClass.getText() + " enabled=" + musicEnabled.isChecked() + " target=" + describePackage(musicTarget) + "\n"
+                + "SAF: " + safTargetPackages.getText() + " enabled=" + safEnabled.isChecked() + " targets=" + describePackageList(safTargetPackages.getText().toString()) + "\n"
+                + "PM compat: " + pmCompatEnabled.isChecked() + "; verbose: " + verboseLogging.isChecked() + "\n"
+                + "Reminder: enable in LSPosed/Vector, scope only com.dofun.variety first, then force-stop scoped apps or reboot after saving.";
+    }
+
+    private String describePackageList(String value) {
+        String[] packages = BridgeConfig.splitPackageList(value);
+        if (packages.length == 0) return "none";
+        StringBuilder b = new StringBuilder();
+        for (String pkg : packages) {
+            if (b.length() > 0) b.append("; ");
+            b.append(pkg).append('=').append(describePackage(pkg));
+        }
+        return b.toString();
+    }
+
+    private String describePackage(String packageName) {
+        String normalized = BridgeConfig.normalizePackage(packageName);
+        if (normalized == null) return "invalid";
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(normalized);
+            return launch == null ? "installed/no-launch-intent" : "installed/launch=" + IntentRewriter.describe(launch, false);
+        } catch (Throwable t) {
+            return "not visible/installed (" + t.getClass().getSimpleName() + ")";
+        }
     }
 
     @SuppressLint("SetWorldReadable")

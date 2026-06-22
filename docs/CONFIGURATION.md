@@ -62,3 +62,11 @@ Stop and disable the module if any of these occur:
 - PackageManager hooks create signature or UID errors.
 - MiXplorer opens but the caller receives no usable result.
 - A target package does not resolve from the scoped caller.
+
+## First-run safety checklist
+
+**Requires device validation:** Enable the module in LSPosed/Vector for `com.dofun.variety` only, save defaults in the app UI, then force-stop DoFun or reboot. Validate radio, music, and SAF separately.
+
+Disable the module in LSPosed/Vector and reboot if DoFun, SystemUI, launcher, radio hardware, reverse camera, Bluetooth, or Topway services become unstable.
+
+The module does not transfer package identity, signing, UID, SELinux domain, privileged permissions, provider authorities, Binder services, or Topway private authority.

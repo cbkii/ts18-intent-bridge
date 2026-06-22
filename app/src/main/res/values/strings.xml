@@ -2,6 +2,6 @@
     <string name="app_name">TS18 Intent Bridge</string>
     <string name="button_save">Save</string>
     <string name="button_reset_defaults">Reset defaults</string>
-    <string name="button_debug_summary">Debug summary</string>
+    <string name="button_check_config">Check current config</string>
     <string name="status_format">Status: %1$s\nPrefs: %2$s/%3$s</string>
 </resources>

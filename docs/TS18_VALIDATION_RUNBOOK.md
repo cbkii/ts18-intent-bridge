@@ -97,3 +97,15 @@ dumpsys activity top > /sdcard/TS18IntentBridge/activity-top.txt
 ```
 
 Then disable the module and reboot.
+
+## Result levels for SAF validation
+
+Record SAF outcomes separately:
+
+1. picker opens;
+2. user can select a file/folder;
+3. caller receives a usable result URI/path;
+4. persisted URI grants work, if the caller requires them;
+5. direct-path/manual fallback remains available.
+
+**Requires device validation:** A replacement file manager opening does not prove full SAF/DocumentsUI compatibility.

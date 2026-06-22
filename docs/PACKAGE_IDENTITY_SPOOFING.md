@@ -4,12 +4,12 @@
 
 Inside scoped caller processes, this module can intercept selected Java calls and return adjusted values:
 
-- intent targets before `startActivity`, `startService`, `bindService`, or broadcast calls;
+- activity intent targets before `startActivity` / `startActivityForResult` style calls;
 - `PackageManager.getPackageInfo()` results;
 - `PackageManager.getApplicationInfo()` results;
 - `PackageManager.getLaunchIntentForPackage()` results;
 - component info returned by `getActivityInfo`, `getServiceInfo`, and `getProviderInfo`;
-- selected install/launch/resolve/query metadata results;
+- selected install/launch/activity resolve/query metadata results;
 - selected `resolveActivity` and query results.
 
 This is caller-side compatibility only. It is useful when a launcher checks "does `com.tw.radio` exist?" before launching a hardcoded component.
@@ -31,7 +31,7 @@ It cannot truly change:
 
 ## PackageManager hook policy
 
-PackageManager compatibility is enabled per rule because TS18 launcher integration may query package identity before launching. Keep it enabled only for the scoped caller packages that need it.
+PackageManager compatibility is globally off by default and per-rule spoofing is off by default. Enable it only when TS18 launcher logs show a scoped caller checks package identity before an activity launch. Normal compatibility does not hook `getPackageUid()` or `checkSignatures()`.
 
 Disable PackageManager spoofing if:
 

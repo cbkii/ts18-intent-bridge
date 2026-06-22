@@ -4,6 +4,12 @@ LSPosed/Vector module scaffold for TS18 / Topway / DoFun Android 10 head units.
 
 The goal is to make hardcoded stock-launcher and picker references more tolerant of replacement apps without deleting stock packages, patching paid APKs, or pretending root equals platform signing.
 
+## Architecture decision
+
+**Observed:** this APK remains a legacy-compatible Xposed module: runtime entry is `assets/xposed_init`, hooks implement `IXposedHookLoadPackage`, and the legacy Xposed API is compile-only. `META-INF/xposed/module.prop` and `META-INF/xposed/scope.list` are included only as manager/scope discovery metadata for LSPosed/Vector-compatible managers; there is no modern `java_init.list` entry and no native Zygisk `.so` module.
+
+**Precedent:** ReZygisk may provide the Zygisk environment on the rooted TS18, while Vector/LSPosed provides ART/Xposed Java hooks. This repository is the Android/Xposed module APK, not a native Magisk/Zygisk module.
+
 ## Implemented scope
 
 Defaults are TS18-specific, but all replacement package names are user-configurable in the module app UI.
@@ -16,8 +22,8 @@ Radio and music bridges are separate; no cross-route fallback rule is shipped.
 
 ## Implemented hook layers
 
-- Caller-side intent rewriting for `startActivity`, `startActivityForResult`, `startService`, `bindService`, and broadcast sender paths.
-- SAF picker rewriting for `ACTION_OPEN_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`, `ACTION_GET_CONTENT`, `ACTION_CREATE_DOCUMENT`, and `ACTION_PICK` when the intent is implicit or explicitly/restrictively aimed at DocumentsUI.
+- Caller-side, operation-typed intent rewriting for activity launches/results by default. Service, bind, broadcast, and PendingIntent rewrites are not default release behaviour.
+- SAF picker rewriting for `ACTION_OPEN_DOCUMENT`, `ACTION_OPEN_DOCUMENT_TREE`, `ACTION_GET_CONTENT`, `ACTION_CREATE_DOCUMENT`, and conservative `ACTION_PICK` cases when the intent is implicit or explicitly/restrictively aimed at DocumentsUI; chooser-wrapped picker intents are handled best-effort.
 - Caller-side `PackageManager` compatibility hooks for selected package, component, launch-intent, and resolver calls.
 - Optional system/framework hook points for Android 10, intentionally documented as high risk and not part of the first validation pass.
 

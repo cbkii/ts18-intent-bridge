@@ -25,6 +25,10 @@ android {
         disable "ExpiredTargetSdkVersion"
     }
 
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"

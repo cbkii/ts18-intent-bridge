@@ -52,3 +52,9 @@ Use these labels in docs, issues, commits, and PRs:
 - https://github.com/rovo89/XposedBridge/wiki/Development-tutorial
 - https://developer.android.com/guide/components/intents-filters
 - https://developer.android.com/training/data-storage/shared/documents-files
+
+## Release architecture note
+
+- This repo is a legacy-compatible LSPosed/Vector Xposed module APK unless a future task proves a native Zygisk requirement.
+- Default scope metadata and runtime allowlist must remain `com.dofun.variety` only.
+- Service, bind, broadcast, PendingIntent, System Framework, UID, signature, provider, Binder, and private Topway authority experiments are not release defaults.

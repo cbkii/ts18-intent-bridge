@@ -1,6 +1,6 @@
 # Second-pass research notes
 
-Updated scope: radio, music, and SAF redirects only. The former radio-to-media fallback is not part of this repo.
+Updated scope: separate radio, music, and SAF redirects only.
 
 ## ReZygisk
 

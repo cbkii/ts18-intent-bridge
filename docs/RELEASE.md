@@ -44,3 +44,9 @@ gradle wrapper --gradle-version 8.10.2 --distribution-type bin
 ```
 
 If you choose to commit wrapper artifacts later, verify the distribution URL, checksum policy, and provenance of `gradle/wrapper/gradle-wrapper.jar` before merging.
+
+## Workflow and package visibility notes
+
+**Observed:** The repository intentionally does not commit Gradle wrapper binaries, so CI uses `./gradlew` when a trusted wrapper is present and falls back to the installed Gradle configured by `gradle/actions/setup-gradle` otherwise.
+
+**Inferred:** Because the TS18 prerelease build intentionally keeps `targetSdk 29`, Android 11+ package visibility `<queries>` changes are not required for this release model. If a future Play/public variant raises target SDK, add precise `<queries>` entries for the configured target packages and picker intents rather than `QUERY_ALL_PACKAGES` unless new evidence justifies it.
