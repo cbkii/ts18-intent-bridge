@@ -35,7 +35,7 @@ jobs:
           find scripts tools log-governor tests -type f \
             \( -name '*.sh' -o -name 'ts18-logctl' \) -print0 |
             xargs -0 shellcheck -x
-          python3 -m compileall -q tools
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/ts18-python-cache" python3 -m compileall -q tools
           bash tests/test-device-tools.sh
       - name: Prepare downloadable artifacts
         id: prepare
@@ -47,11 +47,26 @@ jobs:
           cp "$apk" build/artifacts/ts18-intent-bridge-debug.apk
           bash tools/build-log-governor.sh build/artifacts/ts18-log-governor.zip
           cp -a scripts tools docs/DEVICE_TOOLKIT.md build/artifacts/toolkit/
-          (cd build/artifacts/toolkit && find . -type f -print0 | sort -z | xargs -0 zip -q -X ../ts18-device-toolkit.zip)
+          rm -f build/artifacts/ts18-device-toolkit.zip
+          find build/artifacts/toolkit -exec touch -h -d '@315532800' {} +
+          (
+            cd build/artifacts/toolkit
+            find . -type f -print0 | LC_ALL=C sort -z |
+              xargs -0 zip -q -0 -X ../ts18-device-toolkit.zip
+          )
+          if unzip -Z1 build/artifacts/ts18-device-toolkit.zip |
+            grep -Eq '(^|/)(__pycache__/|[^/]+\.pyc$)'; then
+            echo '::error::Generated Python bytecode entered the toolkit archive.'
+            exit 1
+          fi
           (
             cd build/artifacts
-            sha256sum ts18-intent-bridge-debug.apk ts18-log-governor.zip ts18-device-toolkit.zip \
-              >SHA256SUMS.txt
+            sha256sum ts18-intent-bridge-debug.apk >ts18-intent-bridge-debug.apk.sha256
+            sha256sum ts18-log-governor.zip >ts18-log-governor.zip.sha256
+            sha256sum ts18-device-toolkit.zip >ts18-device-toolkit.zip.sha256
+            sha256sum -c ts18-intent-bridge-debug.apk.sha256
+            sha256sum -c ts18-log-governor.zip.sha256
+            sha256sum -c ts18-device-toolkit.zip.sha256
           )
           echo "apk_sha=$(sha256sum build/artifacts/ts18-intent-bridge-debug.apk | awk '{print $1}')" >>"$GITHUB_OUTPUT"
           echo "governor_sha=$(sha256sum build/artifacts/ts18-log-governor.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
@@ -63,7 +78,7 @@ jobs:
           name: ts18-intent-bridge-debug
           path: |
             build/artifacts/ts18-intent-bridge-debug.apk
-            build/artifacts/SHA256SUMS.txt
+            build/artifacts/ts18-intent-bridge-debug.apk.sha256
           retention-days: 14
       - name: Upload vendor log governor
         id: governor
@@ -72,7 +87,7 @@ jobs:
           name: ts18-log-governor
           path: |
             build/artifacts/ts18-log-governor.zip
-            build/artifacts/SHA256SUMS.txt
+            build/artifacts/ts18-log-governor.zip.sha256
           retention-days: 14
       - name: Upload device toolkit
         id: toolkit
@@ -81,7 +96,7 @@ jobs:
           name: ts18-device-toolkit
           path: |
             build/artifacts/ts18-device-toolkit.zip
-            build/artifacts/SHA256SUMS.txt
+            build/artifacts/ts18-device-toolkit.zip.sha256
           retention-days: 14
       - name: Write artifact summary
         if: always()
@@ -98,7 +113,19 @@ jobs:
             echo
             echo '| Artifact | Download | SHA-256 |'
             echo '|---|---|---|'
-            echo "| Intent Bridge debug APK | [Download](${APK_URL}) | \`${APK_SHA}\` |"
-            echo "| Vendor Log Governor Magisk ZIP | [Download](${GOVERNOR_URL}) | \`${GOVERNOR_SHA}\` |"
-            echo "| Termux/device toolkit ZIP | [Download](${TOOLKIT_URL}) | \`${TOOLKIT_SHA}\` |"
+            if [[ -n "${APK_URL}" && -n "${APK_SHA}" ]]; then
+              echo "| Intent Bridge debug APK | [Download](${APK_URL}) | \`${APK_SHA}\` |"
+            else
+              echo '| Intent Bridge debug APK | Unavailable — build or upload did not complete | — |'
+            fi
+            if [[ -n "${GOVERNOR_URL}" && -n "${GOVERNOR_SHA}" ]]; then
+              echo "| Vendor Log Governor Magisk ZIP | [Download](${GOVERNOR_URL}) | \`${GOVERNOR_SHA}\` |"
+            else
+              echo '| Vendor Log Governor Magisk ZIP | Unavailable — build or upload did not complete | — |'
+            fi
+            if [[ -n "${TOOLKIT_URL}" && -n "${TOOLKIT_SHA}" ]]; then
+              echo "| Termux/device toolkit ZIP | [Download](${TOOLKIT_URL}) | \`${TOOLKIT_SHA}\` |"
+            else
+              echo '| Termux/device toolkit ZIP | Unavailable — build or upload did not complete | — |'
+            fi
           } >>"$GITHUB_STEP_SUMMARY"

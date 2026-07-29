@@ -173,13 +173,7 @@ null/default behaviour, and update frequency.
 The modified developer reference com.tw.music_ac.apk is intentionally excluded. It is not an
 installable authority and must not be repaired, re-signed, or installed.
 EOF
-checksum_tmp="$output_root/.panel-checksums-$stamp-$$.tmp"
-(
-  cd "$stage"
-  find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum
-) >"$checksum_tmp"
-mv "$checksum_tmp" "$stage/checksums.sha256"
+ts18_write_checksums "$stage" "$stage/checksums.sha256"
 zip_path="$output_root/ts18-panel-contract-$stamp-$action.zip"
 ts18_make_zip "$stage" "$zip_path"
 printf 'output=%s\nsha256=%s\n' "$zip_path" "$(ts18_sha256 "$zip_path")"

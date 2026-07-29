@@ -39,6 +39,7 @@ results="$stage/command-results.tsv"
 printf 'label\texit_status\tstarted_epoch\tfinished_epoch\n' >"$results"
 
 audit() {
+  local apk_path root_hash
   ts18_capture "$results" "$stage/id.txt" id id || true
   ts18_capture "$results" "$stage/pm-path.txt" pm-path pm path com.tw.music || true
   ts18_capture "$results" "$stage/package.txt" package dumpsys package com.tw.music || true
@@ -51,7 +52,11 @@ audit() {
     if [[ -r $apk_path ]]; then
       printf '%s  %s\n' "$(ts18_sha256 "$apk_path")" "$apk_path" >>"$stage/stock-apks.sha256"
     elif ts18_root_available; then
-      ts18_root sha256sum "$apk_path" >>"$stage/stock-apks.sha256" 2>/dev/null || true
+      if root_hash=$(ts18_root_sha256 "$apk_path" 2>/dev/null); then
+        printf '%s  %s\n' "$root_hash" "$apk_path" >>"$stage/stock-apks.sha256"
+      else
+        ts18_warn "Could not hash stock APK through root: $apk_path"
+      fi
     fi
   done < <(sed -n 's/^package://p' "$stage/pm-path.txt")
   if ts18_root_available; then
@@ -96,6 +101,8 @@ enabled_candidate_modules() {
 verify_stock_identity() {
   local package_dump=$1 path_dump=$2
   local -a enabled_modules=()
+  ts18_root_available ||
+    ts18_die 'Root is required to prove that no enabled Magisk overlay still owns com.tw.music.'
   grep -Eq 'userId=1000|sharedUserId=1000|sharedUser=android\.uid\.system|sharedUserId=android\.uid\.system' "$package_dump" ||
     ts18_die 'com.tw.music is not proven to own the recorded stock privileged/shared identity.'
   grep -Eq '^package:/(system|product|vendor|system_ext)/' "$path_dump" ||
@@ -103,11 +110,9 @@ verify_stock_identity() {
   if grep -Eq '^package:/data/adb/modules/' "$path_dump"; then
     ts18_die 'A Magisk overlay still owns the visible com.tw.music APK path.'
   fi
-  if ts18_root_available; then
-    mapfile -t enabled_modules < <(enabled_candidate_modules)
-    ((${#enabled_modules[@]} == 0)) ||
-      ts18_die "An enabled exact-package candidate module remains: ${enabled_modules[*]}"
-  fi
+  mapfile -t enabled_modules < <(enabled_candidate_modules)
+  ((${#enabled_modules[@]} == 0)) ||
+    ts18_die "An enabled exact-package candidate module remains: ${enabled_modules[*]}"
 }
 
 audit
@@ -150,13 +155,7 @@ This tool never edits packages.xml, package databases, notification-policy XML, 
 firmware partitions. A Magisk module is disabled only when exactly one candidate is identified.
 Stale notification UIDs remain evidence and are not repaired by XML surgery.
 EOF
-checksum_tmp="$output_root/.music-identity-checksums-$stamp-$$.tmp"
-(
-  cd "$stage"
-  find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum
-) >"$checksum_tmp"
-mv "$checksum_tmp" "$stage/checksums.sha256"
+ts18_write_checksums "$stage" "$stage/checksums.sha256"
 zip_path="$output_root/ts18-music-identity-$stamp-$mode.zip"
 ts18_make_zip "$stage" "$zip_path"
 printf 'output=%s\nsha256=%s\n' "$zip_path" "$(ts18_sha256 "$zip_path")"

@@ -201,13 +201,7 @@ ts18_capture "$results_file" "$stage_dir/system/media-session-after.txt" \
 ts18_capture "$results_file" "$stage_dir/system/audio-after.txt" audio-after dumpsys audio || true
 printf 'capture_finished=%s\n' "$(date -u +%FT%TZ)" >>"$stage_dir/manifest.txt"
 
-checksum_tmp="$work_dir/checksums.sha256.tmp"
-(
-  cd "$stage_dir"
-  find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum
-) >"$checksum_tmp"
-mv "$checksum_tmp" "$stage_dir/checksums.sha256"
+ts18_write_checksums "$stage_dir" "$stage_dir/checksums.sha256"
 immutable="$work_dir/immutable"
 cp -a "$stage_dir" "$immutable"
 output_zip="$output_root/ts18-evidence-$stamp-$scenario_safe.zip"

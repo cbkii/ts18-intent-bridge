@@ -10,6 +10,9 @@ BASELINE="$STATE_DIR/baseline.tsv"
 APPROVED="$STATE_DIR/approved.list"
 PROFILE="$STATE_DIR/profile"
 WINDOW_SECONDS=${TS18_YLOG_WINDOW_SECONDS:-600}
+WINDOW_TOKEN="$STATE_DIR/ylog-window-token"
+WINDOW_DEADLINE="$STATE_DIR/ylog-window-deadline"
+WINDOW_PID="$STATE_DIR/ylog-window-pid"
 LOCK="$STATE_DIR/lock"
 
 mkdir -p "$STATE_DIR"
@@ -101,9 +104,27 @@ apply_quiet() {
 }
 
 apply_full() {
-  services | while IFS= read -r service; do
+  quiet_services | while IFS= read -r service; do
     set_service "$service" start
   done
+}
+
+invalidate_ylog_window() {
+  rm -f "$WINDOW_TOKEN" "$WINDOW_DEADLINE" "$WINDOW_PID"
+}
+
+expire_ylog_window() {
+  expected=$1
+  current=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+  profile=$(cat "$PROFILE" 2>/dev/null || printf stock)
+  if [ "$current" != "$expected" ] || [ "$profile" != ylog-window ]; then
+    printf 'SKIP stale ylog-window timer token=%s current=%s profile=%s\n' \
+      "$expected" "$current" "$profile"
+    return 0
+  fi
+  invalidate_ylog_window
+  apply_quiet
+  printf '%s\n' quiet >"$PROFILE"
 }
 
 start_ylog_window() {
@@ -113,31 +134,36 @@ start_ylog_window() {
   if [ "$WINDOW_SECONDS" -lt 60 ] || [ "$WINDOW_SECONDS" -gt 3600 ]; then
     die 'Ylog window must be 60..3600 seconds.'
   fi
+  invalidate_ylog_window
   for service in ylog yloglite ylogw; do
     set_service "$service" start
   done
   printf '%s\n' ylog-window >"$PROFILE"
   deadline=$(( $(date +%s) + WINDOW_SECONDS ))
-  printf '%s\n' "$deadline" >"$STATE_DIR/ylog-window-deadline"
+  token="$deadline-$$"
+  printf '%s\n' "$token" >"$WINDOW_TOKEN"
+  printf '%s\n' "$deadline" >"$WINDOW_DEADLINE"
   (
     sleep "$WINDOW_SECONDS"
-    printf '%s\n' quiet >"$PROFILE"
-    "$0" apply-current
-    rm -f "$STATE_DIR/ylog-window-deadline"
+    "$0" expire-ylog-window "$token"
   ) >/dev/null 2>&1 &
-  printf '%s\n' "$!" >"$STATE_DIR/ylog-window-pid"
+  printf '%s\n' "$!" >"$WINDOW_PID"
 }
 
 set_profile() {
   requested=$1
+  init_baseline
   case "$requested" in
     stock)
+      invalidate_ylog_window
       apply_stock
       ;;
     quiet)
+      invalidate_ylog_window
       apply_quiet
       ;;
     full-diagnostics)
+      invalidate_ylog_window
       apply_full
       ;;
     ylog-window)
@@ -153,12 +179,17 @@ apply_current() {
   current=$(cat "$PROFILE" 2>/dev/null || printf '%s' stock)
   case "$current" in
     ylog-window)
-      deadline=$(cat "$STATE_DIR/ylog-window-deadline" 2>/dev/null || printf '0')
+      deadline=$(cat "$WINDOW_DEADLINE" 2>/dev/null || printf '0')
       now=$(date +%s)
       if [ "$deadline" -gt "$now" ] 2>/dev/null; then
         for service in ylog yloglite ylogw; do set_service "$service" start; done
       else
-        set_profile quiet
+        token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+        if [ "$token" = none ]; then
+          set_profile quiet
+        else
+          expire_ylog_window "$token"
+        fi
       fi
       ;;
     *) set_profile "$current" ;;
@@ -167,7 +198,7 @@ apply_current() {
 
 status() {
   printf 'profile=%s\n' "$(cat "$PROFILE" 2>/dev/null || printf stock)"
-  printf 'ylog_window_deadline=%s\n' "$(cat "$STATE_DIR/ylog-window-deadline" 2>/dev/null || printf none)"
+  printf 'ylog_window_deadline=%s\n' "$(cat "$WINDOW_DEADLINE" 2>/dev/null || printf none)"
   services | while IFS= read -r service; do
     approved=false
     grep -Fxq "$service" "$APPROVED" && approved=true
@@ -201,6 +232,10 @@ command=${1:-status}
 case "$command" in
   init-baseline) with_lock init_baseline ;;
   apply-current) with_lock apply_current ;;
+  expire-ylog-window)
+    [ "$#" -eq 2 ] || die 'Internal timer token is required.'
+    with_lock expire_ylog_window "$2"
+    ;;
   stock|quiet|full-diagnostics|ylog-window) with_lock set_profile "$command" ;;
   current) cat "$PROFILE" 2>/dev/null || printf '%s\n' stock ;;
   status) status ;;

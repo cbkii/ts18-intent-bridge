@@ -37,7 +37,7 @@ case $mode in
   *) ts18_die 'Mode must be audit, plan, apply, rollback, or compare.' ;;
 esac
 
-protected_packages='com.android.systemui com.android.settings com.android.phone com.android.providers.media com.android.externalstorage com.android.documentsui com.tw.service com.tw.service.xt com.tw.carinfoservice com.dofun.variety'
+protected_packages='com.android.systemui com.android.settings com.android.phone com.android.providers.media com.android.externalstorage com.android.documentsui com.tw.service com.tw.service.xt com.tw.carinfoservice com.dofun.variety com.tw.music'
 is_protected_package() {
   case " $protected_packages " in
     *" $1 "*) return 0 ;;
@@ -130,9 +130,7 @@ EOF
           validate_cleanup_path "$target" || ts18_die "Cleanup path is outside the allowlist: $target"
           ts18_root test -e "$target" || ts18_die "Cleanup target does not exist: $target"
           ts18_root test ! -L "$target" || ts18_die "Cleanup target is a symlink: $target"
-          # Positional parameters are intentionally evaluated by the root-side shell.
-          # shellcheck disable=SC2016
-          mount_point=$(ts18_root sh -c 'awk -v p="$1" "$2 == p {print $2}" /proc/mounts' sh "$target")
+          mount_point=$(ts18_mount_point_for_path "$target")
           [[ -z $mount_point ]] || ts18_die "Cleanup target is a mount point: $target"
           archive_name=$(ts18_safe_name "$target")
           ts18_root tar -czf "$archive_dir/$archive_name.tar.gz" -C / "${target#/}"
@@ -169,13 +167,7 @@ The reported utilisation of read-only dm-backed /system or /vendor images cannot
 this live tool. It never remounts or deletes firmware partitions. Cleanup is limited to exact,
 reviewed writable log paths; debloat uses reversible pm disable-user and rejects protected packages.
 EOF
-checksum_tmp="$output_root/.storage-checksums-$stamp-$$.tmp"
-(
-  cd "$stage"
-  find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum
-) >"$checksum_tmp"
-mv "$checksum_tmp" "$stage/checksums.sha256"
+ts18_write_checksums "$stage" "$stage/checksums.sha256"
 zip_path="$output_root/ts18-storage-pressure-$stamp-$mode.zip"
 ts18_make_zip "$stage" "$zip_path"
 printf 'output=%s\nsha256=%s\n' "$zip_path" "$(ts18_sha256 "$zip_path")"

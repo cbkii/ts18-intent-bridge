@@ -59,15 +59,64 @@ ts18_sha256() {
   fi
 }
 
+ts18_root_sha256() {
+  if ts18_root sh -c 'command -v sha256sum >/dev/null 2>&1'; then
+    ts18_root sha256sum "$1" | awk '{print $1}'
+  elif ts18_root sh -c 'command -v toybox >/dev/null 2>&1'; then
+    ts18_root toybox sha256sum "$1" | awk '{print $1}'
+  else
+    ts18_die 'Neither sha256sum nor toybox sha256sum is available through root.'
+  fi
+}
+
+ts18_write_checksums() {
+  local source_dir=$1 output_file=$2 output_dir output_name temporary hash
+  source_dir=$(CDPATH='' cd -- "$source_dir" && pwd -P) ||
+    ts18_die "Cannot resolve checksum source directory: $source_dir"
+  output_dir=$(CDPATH='' cd -- "$(dirname -- "$output_file")" && pwd -P) ||
+    ts18_die "Cannot resolve checksum output directory: $(dirname -- "$output_file")"
+  output_name=$(basename -- "$output_file")
+  output_file="$output_dir/$output_name"
+  temporary="$output_file.tmp.$$"
+  rm -f -- "$temporary"
+  if ! (
+    cd "$source_dir"
+    while IFS= read -r -d '' file; do
+      if ! hash=$(ts18_sha256 "$file"); then
+        exit 1
+      fi
+      printf '%s  %s\n' "$hash" "$file"
+    done < <(
+      find . -type f ! -name "$output_name" ! -name "$(basename -- "$temporary")" -print0 |
+        LC_ALL=C sort -z
+    )
+  ) >"$temporary"; then
+    rm -f -- "$temporary"
+    ts18_die "Could not generate checksum manifest: $output_file"
+  fi
+  mv -- "$temporary" "$output_file"
+}
+
 ts18_make_zip() {
-  local source_dir=$1 output_zip=$2
+  local source_dir=$1 output_zip=$2 output_dir
+  source_dir=$(CDPATH='' cd -- "$source_dir" && pwd -P) ||
+    ts18_die "Cannot resolve archive source directory: $source_dir"
+  output_dir=$(CDPATH='' cd -- "$(dirname -- "$output_zip")" && pwd -P) ||
+    ts18_die "Cannot resolve archive output directory: $(dirname -- "$output_zip")"
+  output_zip="$output_dir/$(basename -- "$output_zip")"
   command -v zip >/dev/null 2>&1 || ts18_die 'zip is required. In Termux run: pkg install zip unzip'
   command -v unzip >/dev/null 2>&1 || ts18_die 'unzip is required. In Termux run: pkg install zip unzip'
+  rm -f -- "$output_zip"
   (
     cd "$source_dir"
     find . -type f -print0 | LC_ALL=C sort -z | xargs -0 zip -q -X "$output_zip"
   )
   unzip -t "$output_zip" >/dev/null
+}
+
+ts18_mount_point_for_path() {
+  local path=$1
+  ts18_root awk -v "p=$path" '$2 == p {print $2}' /proc/mounts
 }
 
 ts18_wait_pid() {

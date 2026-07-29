@@ -2,7 +2,14 @@
 set -eu
 
 MODDIR=${0%/*}
+restored=false
 if [ -x "$MODDIR/bin/ts18-logctl" ]; then
-  "$MODDIR/bin/ts18-logctl" stock || true
+  if "$MODDIR/bin/ts18-logctl" stock; then
+    restored=true
+  fi
 fi
-printf '%s\n' 'Baseline service state restored where the recorded init services still exist.'
+if [ "$restored" = true ]; then
+  printf '%s\n' 'Baseline service state restored where the recorded init services still exist.'
+else
+  printf '%s\n' 'WARNING: baseline service state was not restored; ts18-logctl was missing or failed.' >&2
+fi
