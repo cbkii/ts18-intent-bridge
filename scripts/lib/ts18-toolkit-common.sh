@@ -70,7 +70,8 @@ ts18_root_sha256() {
 }
 
 ts18_write_checksums() {
-  local source_dir=$1 output_file=$2 output_dir output_name temporary hash
+  local source_dir=$1 output_file=$2 output_dir output_name temporary hash file
+  local -a files=()
   source_dir=$(CDPATH='' cd -- "$source_dir" && pwd -P) ||
     ts18_die "Cannot resolve checksum source directory: $source_dir"
   output_dir=$(CDPATH='' cd -- "$(dirname -- "$output_file")" && pwd -P) ||
@@ -78,22 +79,19 @@ ts18_write_checksums() {
   output_name=$(basename -- "$output_file")
   output_file="$output_dir/$output_name"
   temporary="$output_file.tmp.$$"
-  rm -f -- "$temporary"
-  if ! (
+  mapfile -d '' -t files < <(
     cd "$source_dir"
-    while IFS= read -r -d '' file; do
-      if ! hash=$(ts18_sha256 "$file"); then
-        exit 1
-      fi
-      printf '%s  %s\n' "$hash" "$file"
-    done < <(
-      find . -type f ! -name "$output_name" ! -name "$(basename -- "$temporary")" -print0 |
-        LC_ALL=C sort -z
-    )
-  ) >"$temporary"; then
-    rm -f -- "$temporary"
-    ts18_die "Could not generate checksum manifest: $output_file"
-  fi
+    find . -type f ! -name "$output_name" -print0 | LC_ALL=C sort -z
+  )
+  rm -f -- "$temporary"
+  : >"$temporary"
+  for file in "${files[@]}"; do
+    if ! hash=$(ts18_sha256 "$source_dir/${file#./}"); then
+      rm -f -- "$temporary"
+      ts18_die "Could not hash bundle entry: $file"
+    fi
+    printf '%s  %s\n' "$hash" "$file" >>"$temporary"
+  done
   mv -- "$temporary" "$output_file"
 }
 
@@ -116,6 +114,8 @@ ts18_make_zip() {
 
 ts18_mount_point_for_path() {
   local path=$1
+  # The awk field references are intentionally evaluated by awk after root argument quoting.
+  # shellcheck disable=SC2016
   ts18_root awk -v "p=$path" '$2 == p {print $2}' /proc/mounts
 }
 
