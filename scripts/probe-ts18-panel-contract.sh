@@ -2,7 +2,7 @@
 # Capture static and dynamic evidence for the private DoFun/Topway panel contract.
 set -euo pipefail
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
 source "$script_dir/lib/ts18-toolkit-common.sh"
 
@@ -55,10 +55,12 @@ case $action in
   observe|play|pause|play-pause|next|previous) ;;
   *) ts18_die 'Unsupported action.' ;;
 esac
-[[ $duration =~ ^[0-9]+$ ]] && ((duration >= 5 && duration <= 300)) ||
+if [[ ! $duration =~ ^[0-9]+$ ]] || ((duration < 5 || duration > 300)); then
   ts18_die 'Duration must be 5..300 seconds.'
-[[ $repeats =~ ^[0-9]+$ ]] && ((repeats >= 1 && repeats <= 5)) ||
+fi
+if [[ ! $repeats =~ ^[0-9]+$ ]] || ((repeats < 1 || repeats > 5)); then
   ts18_die 'Repeats must be 1..5.'
+fi
 
 keycode_for_action() {
   case $1 in
@@ -171,11 +173,13 @@ null/default behaviour, and update frequency.
 The modified developer reference com.tw.music_ac.apk is intentionally excluded. It is not an
 installable authority and must not be repaired, re-signed, or installed.
 EOF
+checksum_tmp="$output_root/.panel-checksums-$stamp-$$.tmp"
 (
   cd "$stage"
   find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum >checksums.sha256
-)
+    xargs -0 sha256sum
+) >"$checksum_tmp"
+mv "$checksum_tmp" "$stage/checksums.sha256"
 zip_path="$output_root/ts18-panel-contract-$stamp-$action.zip"
 ts18_make_zip "$stage" "$zip_path"
 printf 'output=%s\nsha256=%s\n' "$zip_path" "$(ts18_sha256 "$zip_path")"

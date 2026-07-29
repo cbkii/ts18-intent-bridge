@@ -23,7 +23,7 @@ ts18_root_available() {
 
 ts18_root() {
   ts18_root_available || ts18_die 'Root is required for this operation.'
-  local quoted= arg
+  local quoted='' arg
   for arg in "$@"; do
     printf -v quoted '%s %q' "$quoted" "$arg"
   done
@@ -72,10 +72,10 @@ ts18_make_zip() {
 
 ts18_wait_pid() {
   local pid=$1 attempts=${2:-30}
-  local attempt
-  for attempt in $(seq 1 "$attempts"); do
+  while ((attempts > 0)); do
     kill -0 "$pid" 2>/dev/null || return 0
     sleep 1
+    attempts=$((attempts - 1))
   done
   return 1
 }

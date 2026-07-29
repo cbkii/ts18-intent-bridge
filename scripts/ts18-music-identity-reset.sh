@@ -2,7 +2,7 @@
 # Audit-first recovery for stock com.tw.music identity after exact-package module experiments.
 set -euo pipefail
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
 source "$script_dir/lib/ts18-toolkit-common.sh"
 
@@ -55,6 +55,8 @@ audit() {
     fi
   done < <(sed -n 's/^package://p' "$stage/pm-path.txt")
   if ts18_root_available; then
+    # The quoted program is intentionally evaluated by the root-side shell.
+    # shellcheck disable=SC2016
     ts18_capture_root "$results" "$stage/magisk-modules.txt" magisk-modules \
       sh -c 'for d in /data/adb/modules/*; do [ -d "$d" ] || continue; printf "%s disabled=%s remove=%s\n" "$d" "$([ -e "$d/disable" ] && echo true || echo false)" "$([ -e "$d/remove" ] && echo true || echo false)"; find "$d" -type f -o -type l; done' || true
   else
@@ -63,6 +65,8 @@ audit() {
 }
 
 candidate_modules() {
+  # The quoted program is intentionally evaluated by the root-side shell.
+  # shellcheck disable=SC2016
   ts18_root sh -c '
     for d in /data/adb/modules/*; do
       [ -d "$d" ] || continue
@@ -75,6 +79,8 @@ candidate_modules() {
 }
 
 enabled_candidate_modules() {
+  # The quoted program is intentionally evaluated by the root-side shell.
+  # shellcheck disable=SC2016
   ts18_root sh -c '
     for d in /data/adb/modules/*; do
       [ -d "$d" ] || continue
@@ -144,11 +150,13 @@ This tool never edits packages.xml, package databases, notification-policy XML, 
 firmware partitions. A Magisk module is disabled only when exactly one candidate is identified.
 Stale notification UIDs remain evidence and are not repaired by XML surgery.
 EOF
+checksum_tmp="$output_root/.music-identity-checksums-$stamp-$$.tmp"
 (
   cd "$stage"
   find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum >checksums.sha256
-)
+    xargs -0 sha256sum
+) >"$checksum_tmp"
+mv "$checksum_tmp" "$stage/checksums.sha256"
 zip_path="$output_root/ts18-music-identity-$stamp-$mode.zip"
 ts18_make_zip "$stage" "$zip_path"
 printf 'output=%s\nsha256=%s\n' "$zip_path" "$(ts18_sha256 "$zip_path")"

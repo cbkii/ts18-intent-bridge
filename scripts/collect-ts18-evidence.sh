@@ -2,7 +2,7 @@
 # Version/variant-agnostic TS18 application and integration evidence collector.
 set -euo pipefail
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
 source "$script_dir/lib/ts18-toolkit-common.sh"
 
@@ -52,8 +52,9 @@ while (($#)); do
       ;;
   esac
 done
-[[ $duration =~ ^[0-9]+$ ]] && ((duration >= 5 && duration <= 7200)) ||
+if [[ ! $duration =~ ^[0-9]+$ ]] || ((duration < 5 || duration > 7200)); then
   ts18_die 'Duration must be 5..7200 seconds.'
+fi
 
 ts18_require_android
 stamp=$(date +%Y%m%d-%H%M%S)
@@ -116,6 +117,8 @@ ts18_capture "$results_file" "$stage_dir/system/mount.txt" mount mount || true
 ts18_capture "$results_file" "$stage_dir/system/packages.txt" packages pm list packages -f -U -u || true
 ts18_capture "$results_file" "$stage_dir/system/processes.txt" processes ps -A -o USER,PID,PPID,NAME,ARGS || true
 if ts18_root_available; then
+  # The quoted program is intentionally evaluated by the root-side shell.
+  # shellcheck disable=SC2016
   ts18_capture_root "$results_file" "$stage_dir/system/magisk-modules.txt" magisk-modules \
     sh -c 'for d in /data/adb/modules/*; do [ -d "$d" ] || continue; printf "%s disabled=%s remove=%s\n" "$d" "$([ -e "$d/disable" ] && echo true || echo false)" "$([ -e "$d/remove" ] && echo true || echo false)"; done' || true
 else
@@ -198,11 +201,13 @@ ts18_capture "$results_file" "$stage_dir/system/media-session-after.txt" \
 ts18_capture "$results_file" "$stage_dir/system/audio-after.txt" audio-after dumpsys audio || true
 printf 'capture_finished=%s\n' "$(date -u +%FT%TZ)" >>"$stage_dir/manifest.txt"
 
+checksum_tmp="$work_dir/checksums.sha256.tmp"
 (
   cd "$stage_dir"
   find . -type f ! -name checksums.sha256 -print0 | LC_ALL=C sort -z |
-    xargs -0 sha256sum >checksums.sha256
-)
+    xargs -0 sha256sum
+) >"$checksum_tmp"
+mv "$checksum_tmp" "$stage_dir/checksums.sha256"
 immutable="$work_dir/immutable"
 cp -a "$stage_dir" "$immutable"
 output_zip="$output_root/ts18-evidence-$stamp-$scenario_safe.zip"

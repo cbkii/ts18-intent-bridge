@@ -110,8 +110,9 @@ start_ylog_window() {
   case "$WINDOW_SECONDS" in
     ''|*[!0-9]*) die 'TS18_YLOG_WINDOW_SECONDS must be an integer.' ;;
   esac
-  [ "$WINDOW_SECONDS" -ge 60 ] && [ "$WINDOW_SECONDS" -le 3600 ] ||
+  if [ "$WINDOW_SECONDS" -lt 60 ] || [ "$WINDOW_SECONDS" -gt 3600 ]; then
     die 'Ylog window must be 60..3600 seconds.'
+  fi
   for service in ylog yloglite ylogw; do
     set_service "$service" start
   done
