@@ -1,0 +1,10 @@
+# Candidate vendor diagnostic collectors. Probe and approve non-ylog services before quieting.
+ylog
+yloglite
+ylogw
+slogmodem
+vendor.slogmodem
+log_service
+modemlog_connmgr_service
+vendor.mlogservice
+vendor.sprd.hardware.cplog_connmgr@1.0-service

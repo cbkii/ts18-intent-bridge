@@ -1,0 +1,6 @@
+id=ts18_log_governor
+name=TS18 Vendor Log Governor
+version=v0.1.0
+versionCode=100
+author=cbkii
+description=Audit-first, reversible control of TS18 vendor diagnostic collectors with a bounded ylog window.

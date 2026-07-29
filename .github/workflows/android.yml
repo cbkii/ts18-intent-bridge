@@ -21,7 +21,84 @@ jobs:
           gradle-version: 8.10.2
       - name: Build debug APK
         run: |
+          set -euo pipefail
           if [ -x ./gradlew ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
           "$GRADLE" assembleDebug test --no-daemon
-      - name: Shell syntax
-        run: bash -n scripts/*.sh
+      - name: Validate device toolkit
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck zip unzip
+          find scripts tools log-governor tests -type f \
+            \( -name '*.sh' -o -name 'ts18-logctl' \) -print0 |
+            xargs -0 -n1 bash -n
+          find scripts tools log-governor tests -type f \
+            \( -name '*.sh' -o -name 'ts18-logctl' \) -print0 |
+            xargs -0 shellcheck -x
+          python3 -m compileall -q tools
+          bash tests/test-device-tools.sh
+      - name: Prepare downloadable artifacts
+        id: prepare
+        run: |
+          set -euo pipefail
+          mkdir -p build/artifacts/toolkit
+          apk="$(find app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" build/artifacts/ts18-intent-bridge-debug.apk
+          bash tools/build-log-governor.sh build/artifacts/ts18-log-governor.zip
+          cp -a scripts tools docs/DEVICE_TOOLKIT.md build/artifacts/toolkit/
+          (cd build/artifacts/toolkit && find . -type f -print0 | sort -z | xargs -0 zip -q -X ../ts18-device-toolkit.zip)
+          (
+            cd build/artifacts
+            sha256sum ts18-intent-bridge-debug.apk ts18-log-governor.zip ts18-device-toolkit.zip \
+              >SHA256SUMS.txt
+          )
+          echo "apk_sha=$(sha256sum build/artifacts/ts18-intent-bridge-debug.apk | awk '{print $1}')" >>"$GITHUB_OUTPUT"
+          echo "governor_sha=$(sha256sum build/artifacts/ts18-log-governor.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
+          echo "toolkit_sha=$(sha256sum build/artifacts/ts18-device-toolkit.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
+      - name: Upload bridge debug APK
+        id: apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts18-intent-bridge-debug
+          path: |
+            build/artifacts/ts18-intent-bridge-debug.apk
+            build/artifacts/SHA256SUMS.txt
+          retention-days: 14
+      - name: Upload vendor log governor
+        id: governor
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts18-log-governor
+          path: |
+            build/artifacts/ts18-log-governor.zip
+            build/artifacts/SHA256SUMS.txt
+          retention-days: 14
+      - name: Upload device toolkit
+        id: toolkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts18-device-toolkit
+          path: |
+            build/artifacts/ts18-device-toolkit.zip
+            build/artifacts/SHA256SUMS.txt
+          retention-days: 14
+      - name: Write artifact summary
+        if: always()
+        env:
+          APK_URL: ${{ steps.apk.outputs.artifact-url }}
+          GOVERNOR_URL: ${{ steps.governor.outputs.artifact-url }}
+          TOOLKIT_URL: ${{ steps.toolkit.outputs.artifact-url }}
+          APK_SHA: ${{ steps.prepare.outputs.apk_sha }}
+          GOVERNOR_SHA: ${{ steps.prepare.outputs.governor_sha }}
+          TOOLKIT_SHA: ${{ steps.prepare.outputs.toolkit_sha }}
+        run: |
+          {
+            echo '## TS18 build artifacts'
+            echo
+            echo '| Artifact | Download | SHA-256 |'
+            echo '|---|---|---|'
+            echo "| Intent Bridge debug APK | [Download](${APK_URL}) | \`${APK_SHA}\` |"
+            echo "| Vendor Log Governor Magisk ZIP | [Download](${GOVERNOR_URL}) | \`${GOVERNOR_SHA}\` |"
+            echo "| Termux/device toolkit ZIP | [Download](${TOOLKIT_URL}) | \`${TOOLKIT_SHA}\` |"
+          } >>"$GITHUB_STEP_SUMMARY"

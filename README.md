@@ -81,6 +81,10 @@ scripts/show-current-config.sh
 
 See `docs/TS18_VALIDATION_RUNBOOK.md` and `docs/CONFIGURATION.md`.
 
+For the version-agnostic collector, stock-music recovery, private panel-contract campaign,
+storage-pressure audit, and separately installable vendor-log governor, see
+[`docs/DEVICE_TOOLKIT.md`](docs/DEVICE_TOOLKIT.md).
+
 ## Key references
 
 - ReZygisk: https://github.com/PerformanC/ReZygisk
@@ -102,4 +106,3 @@ See `docs/TS18_VALIDATION_RUNBOOK.md` and `docs/CONFIGURATION.md`.
 - PackageManager compatibility is a bounded caller-side shim and is off by default. It covers selected installed/launch/resolve/query APIs only when enabled; it does not spoof signatures, Linux UIDs, privileged permissions, provider authorities, private services, or hardware control.
 - The module UI stores editable defaults for SAF (`com.mixplorer,com.mixplorer.silver`), radio (`com.tw.radio` to `com.navimods.radio`), and music (`com.tw.music/com.tw.music.MusicActivity` to `com.tw.media/com.tw.music.MusicActivity`).
 - Manual releases are produced with `.github/workflows/manual-release.yml`; trigger it with `workflow_dispatch`, provide a version name, and keep prerelease enabled until TS18 logs validate the artifact.
-

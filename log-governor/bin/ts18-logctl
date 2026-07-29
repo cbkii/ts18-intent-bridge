@@ -1,0 +1,212 @@
+#!/system/bin/sh
+# Reversible, no-polling vendor diagnostic service controller.
+set -eu
+
+MODDIR=${TS18_LOG_GOVERNOR_MODDIR:-${0%/bin/ts18-logctl}}
+STATE_DIR=${TS18_LOG_GOVERNOR_STATE_DIR:-/data/adb/ts18-log-governor}
+CANDIDATES="$MODDIR/config/candidates.list"
+QUIET_DEFAULT="$MODDIR/config/quiet-default.list"
+BASELINE="$STATE_DIR/baseline.tsv"
+APPROVED="$STATE_DIR/approved.list"
+PROFILE="$STATE_DIR/profile"
+WINDOW_SECONDS=${TS18_YLOG_WINDOW_SECONDS:-600}
+LOCK="$STATE_DIR/lock"
+
+mkdir -p "$STATE_DIR"
+touch "$APPROVED"
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_service() {
+  case "$1" in
+    ''|*[!A-Za-z0-9_.@-]*) return 1 ;;
+    logd|tombstoned|audioserver|system_server|watchdog*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+services() {
+  sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$CANDIDATES"
+}
+
+service_exists() {
+  [ -n "$(getprop "init.svc.$1")" ]
+}
+
+service_state() {
+  getprop "init.svc.$1"
+}
+
+set_service() {
+  service=$1
+  operation=$2
+  valid_service "$service" || die "Refusing unsafe service name: $service"
+  service_exists "$service" || {
+    printf 'SKIP missing %s\n' "$service"
+    return 0
+  }
+  setprop "ctl.$operation" "$service"
+  printf '%s %s requested; state=%s\n' "$operation" "$service" "$(service_state "$service")"
+}
+
+with_lock() {
+  attempts=0
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -lt 20 ] || die 'Governor is busy.'
+    sleep 1
+  done
+  trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+  "$@"
+  rmdir "$LOCK" 2>/dev/null || true
+  trap - EXIT INT TERM
+}
+
+init_baseline() {
+  [ -s "$BASELINE" ] && return 0
+  temporary="$BASELINE.tmp"
+  : >"$temporary"
+  services | while IFS= read -r service; do
+    valid_service "$service" || die "Unsafe candidate: $service"
+    printf '%s\t%s\n' "$service" "$(service_state "$service")" >>"$temporary"
+  done
+  mv "$temporary" "$BASELINE"
+}
+
+apply_stock() {
+  init_baseline
+  while IFS="$(printf '\t')" read -r service state; do
+    case "$state" in
+      running|restarting) set_service "$service" start ;;
+      stopped|disabled) set_service "$service" stop ;;
+      *) printf 'SKIP baseline-unavailable %s state=%s\n' "$service" "$state" ;;
+    esac
+  done <"$BASELINE"
+}
+
+quiet_services() {
+  {
+    sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$QUIET_DEFAULT"
+    sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$APPROVED"
+  } | awk '!seen[$0]++'
+}
+
+apply_quiet() {
+  quiet_services | while IFS= read -r service; do
+    set_service "$service" stop
+  done
+}
+
+apply_full() {
+  services | while IFS= read -r service; do
+    set_service "$service" start
+  done
+}
+
+start_ylog_window() {
+  case "$WINDOW_SECONDS" in
+    ''|*[!0-9]*) die 'TS18_YLOG_WINDOW_SECONDS must be an integer.' ;;
+  esac
+  [ "$WINDOW_SECONDS" -ge 60 ] && [ "$WINDOW_SECONDS" -le 3600 ] ||
+    die 'Ylog window must be 60..3600 seconds.'
+  for service in ylog yloglite ylogw; do
+    set_service "$service" start
+  done
+  printf '%s\n' ylog-window >"$PROFILE"
+  deadline=$(( $(date +%s) + WINDOW_SECONDS ))
+  printf '%s\n' "$deadline" >"$STATE_DIR/ylog-window-deadline"
+  (
+    sleep "$WINDOW_SECONDS"
+    printf '%s\n' quiet >"$PROFILE"
+    "$0" apply-current
+    rm -f "$STATE_DIR/ylog-window-deadline"
+  ) >/dev/null 2>&1 &
+  printf '%s\n' "$!" >"$STATE_DIR/ylog-window-pid"
+}
+
+set_profile() {
+  requested=$1
+  case "$requested" in
+    stock)
+      apply_stock
+      ;;
+    quiet)
+      apply_quiet
+      ;;
+    full-diagnostics)
+      apply_full
+      ;;
+    ylog-window)
+      start_ylog_window
+      return
+      ;;
+    *) die "Unknown profile: $requested" ;;
+  esac
+  printf '%s\n' "$requested" >"$PROFILE"
+}
+
+apply_current() {
+  current=$(cat "$PROFILE" 2>/dev/null || printf '%s' stock)
+  case "$current" in
+    ylog-window)
+      deadline=$(cat "$STATE_DIR/ylog-window-deadline" 2>/dev/null || printf '0')
+      now=$(date +%s)
+      if [ "$deadline" -gt "$now" ] 2>/dev/null; then
+        for service in ylog yloglite ylogw; do set_service "$service" start; done
+      else
+        set_profile quiet
+      fi
+      ;;
+    *) set_profile "$current" ;;
+  esac
+}
+
+status() {
+  printf 'profile=%s\n' "$(cat "$PROFILE" 2>/dev/null || printf stock)"
+  printf 'ylog_window_deadline=%s\n' "$(cat "$STATE_DIR/ylog-window-deadline" 2>/dev/null || printf none)"
+  services | while IFS= read -r service; do
+    approved=false
+    grep -Fxq "$service" "$APPROVED" && approved=true
+    printf 'service=%s state=%s approved_for_quiet=%s\n' \
+      "$service" "$(service_state "$service")" "$approved"
+  done
+}
+
+probe() {
+  stamp=$(date +%Y%m%d-%H%M%S)
+  report="$STATE_DIR/probe-$stamp"
+  mkdir -p "$report"
+  status >"$report/status.txt"
+  getprop >"$report/getprop.txt"
+  ps -A -o USER,PID,PPID,NAME,ARGS >"$report/processes.txt" 2>&1 || true
+  df -k >"$report/df.txt" 2>&1 || true
+  grep -R -n -E 'service[[:space:]]+.*(ylog|slog|modem|mlog|cplog|log_service)' \
+    /system/etc/init /vendor/etc/init /odm/etc/init >"$report/init-definitions.txt" 2>&1 || true
+  printf 'report=%s\n' "$report"
+}
+
+approve() {
+  service=$1
+  valid_service "$service" || die "Unsafe service name: $service"
+  services | grep -Fxq "$service" || die "Not a known candidate: $service"
+  grep -Fxq "$service" "$APPROVED" || printf '%s\n' "$service" >>"$APPROVED"
+  printf 'approved=%s\n' "$service"
+}
+
+command=${1:-status}
+case "$command" in
+  init-baseline) with_lock init_baseline ;;
+  apply-current) with_lock apply_current ;;
+  stock|quiet|full-diagnostics|ylog-window) with_lock set_profile "$command" ;;
+  current) cat "$PROFILE" 2>/dev/null || printf '%s\n' stock ;;
+  status) status ;;
+  probe) probe ;;
+  approve)
+    [ "$#" -eq 2 ] || die 'Usage: ts18-logctl approve SERVICE'
+    approve "$2"
+    ;;
+  *) die 'Commands: status, probe, approve SERVICE, stock, quiet, ylog-window, full-diagnostics' ;;
+esac
