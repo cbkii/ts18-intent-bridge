@@ -20,12 +20,7 @@ cat >"$fake_bin/setprop" <<'EOF'
 #!/usr/bin/env bash
 printf '%s %s\n' "$1" "$2" >>"${TS18_FAKE_SETPROP_LOG:?}"
 EOF
-cat >"$fake_bin/su" <<'EOF'
-#!/usr/bin/env bash
-[[ ${1:-} == -c && $# -eq 2 ]] || exit 2
-bash -c "$2"
-EOF
-chmod +x "$fake_bin/getprop" "$fake_bin/setprop" "$fake_bin/su"
+chmod +x "$fake_bin/getprop" "$fake_bin/setprop"
 
 export PATH="$fake_bin:$PATH"
 export TS18_FAKE_SETPROP_LOG="$tmp/setprop.log"
@@ -66,6 +61,7 @@ kill "$window_pid" 2>/dev/null || true
 # The storage deletion mount-point guard must pass awk field references intact through root.
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
 source "$repo_root/scripts/lib/ts18-toolkit-common.sh"
+ts18_root() { "$@"; }
 [[ $(ts18_mount_point_for_path /proc) == /proc ]]
 
 checksum_source="$tmp/checksum-source"
