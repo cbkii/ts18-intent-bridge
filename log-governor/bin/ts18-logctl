@@ -109,8 +109,87 @@ apply_full() {
   done
 }
 
-invalidate_ylog_window() {
+clear_ylog_window_state() {
   rm -f "$WINDOW_TOKEN" "$WINDOW_DEADLINE" "$WINDOW_PID"
+}
+
+timer_process_matches() {
+  pid=$1
+  token=$2
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+  case "$command_line" in
+    *ylog-window-timer*"$token"*|*expire-ylog-window*"$token"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+stop_ylog_timer() {
+  current_token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+  [ -s "$WINDOW_PID" ] || return 0
+  timer_record=$(cat "$WINDOW_PID" 2>/dev/null || true)
+  timer_pid=${timer_record%%	*}
+  timer_token=${timer_record#*	}
+  case "$timer_pid" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  if [ "$timer_token" != "$current_token" ] ||
+    ! kill -0 "$timer_pid" 2>/dev/null ||
+    ! timer_process_matches "$timer_pid" "$timer_token"; then
+    return 0
+  fi
+  kill -TERM "$timer_pid" 2>/dev/null || return 0
+  attempts=5
+  while kill -0 "$timer_pid" 2>/dev/null && [ "$attempts" -gt 0 ]; do
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+  if kill -0 "$timer_pid" 2>/dev/null &&
+    timer_process_matches "$timer_pid" "$timer_token"; then
+    kill -KILL "$timer_pid" 2>/dev/null || true
+  fi
+}
+
+invalidate_ylog_window() {
+  stop_ylog_timer
+  clear_ylog_window_state
+}
+
+schedule_ylog_timer() {
+  token=$1
+  seconds=$2
+  case "$seconds" in
+    ''|*[!0-9]*|0) die 'Ylog timer duration must be a positive integer.' ;;
+  esac
+  if [ -s "$WINDOW_PID" ]; then
+    timer_record=$(cat "$WINDOW_PID" 2>/dev/null || true)
+    timer_pid=${timer_record%%	*}
+    timer_token=${timer_record#*	}
+    if [ "$timer_token" = "$token" ] &&
+      kill -0 "$timer_pid" 2>/dev/null &&
+      timer_process_matches "$timer_pid" "$timer_token"; then
+      return 0
+    fi
+  fi
+  rm -f "$WINDOW_PID"
+  sh "$0" ylog-window-timer "$token" "$seconds" >/dev/null 2>&1 &
+  timer_pid=$!
+  printf '%s\t%s\n' "$timer_pid" "$token" >"$WINDOW_PID"
+}
+
+run_ylog_timer() {
+  token=$1
+  seconds=$2
+  timer_child=''
+  case "$seconds" in
+    ''|*[!0-9]*|0) die 'Ylog timer duration must be a positive integer.' ;;
+  esac
+  trap 'kill -TERM "$timer_child" 2>/dev/null || true; exit 0' INT TERM
+  sleep "$seconds" &
+  timer_child=$!
+  wait "$timer_child" || exit 0
+  trap - INT TERM
+  exec sh "$0" expire-ylog-window "$token"
 }
 
 expire_ylog_window() {
@@ -122,7 +201,9 @@ expire_ylog_window() {
       "$expected" "$current" "$profile"
     return 0
   fi
-  invalidate_ylog_window
+  # The timer process may be expiring its own window, so do not signal the
+  # recorded PID from this path.
+  clear_ylog_window_state
   apply_quiet
   printf '%s\n' quiet >"$PROFILE"
 }
@@ -143,11 +224,7 @@ start_ylog_window() {
   token="$deadline-$$"
   printf '%s\n' "$token" >"$WINDOW_TOKEN"
   printf '%s\n' "$deadline" >"$WINDOW_DEADLINE"
-  (
-    sleep "$WINDOW_SECONDS"
-    "$0" expire-ylog-window "$token"
-  ) >/dev/null 2>&1 &
-  printf '%s\n' "$!" >"$WINDOW_PID"
+  schedule_ylog_timer "$token" "$WINDOW_SECONDS"
 }
 
 set_profile() {
@@ -180,11 +257,15 @@ apply_current() {
   case "$current" in
     ylog-window)
       deadline=$(cat "$WINDOW_DEADLINE" 2>/dev/null || printf '0')
+      token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
       now=$(date +%s)
-      if [ "$deadline" -gt "$now" ] 2>/dev/null; then
+      case "$deadline" in
+        ''|*[!0-9]*) deadline=0 ;;
+      esac
+      if [ "$token" != none ] && [ "$deadline" -gt "$now" ]; then
         for service in ylog yloglite ylogw; do set_service "$service" start; done
+        schedule_ylog_timer "$token" "$((deadline - now))"
       else
-        token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
         if [ "$token" = none ]; then
           set_profile quiet
         else
@@ -235,6 +316,10 @@ case "$command" in
   expire-ylog-window)
     [ "$#" -eq 2 ] || die 'Internal timer token is required.'
     with_lock expire_ylog_window "$2"
+    ;;
+  ylog-window-timer)
+    [ "$#" -eq 3 ] || die 'Internal timer token and duration are required.'
+    run_ylog_timer "$2" "$3"
     ;;
   stock|quiet|full-diagnostics|ylog-window) with_lock set_profile "$command" ;;
   current) cat "$PROFILE" 2>/dev/null || printf '%s\n' stock ;;

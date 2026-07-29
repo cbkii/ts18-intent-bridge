@@ -1,9 +1,9 @@
 # TS18 Vendor Log Governor
 
-**Observed (repository source):** This is a separately installable Magisk module. It controls
+**Observed:** Repository source shows that this is a separately installable Magisk module. It controls
 vendor diagnostic collectors only and does not modify the TS18 Intent Bridge APK.
 
-**Observed (repository source and fixtures):** The default profile is `stock`, so installation
+**Observed:** Repository source and fixtures show that the default profile is `stock`, so installation
 alone changes no service state. The first profile command records the baseline before changing any
 service. First run:
 
@@ -12,7 +12,7 @@ su -c /data/adb/modules/ts18_log_governor/bin/ts18-logctl probe
 su -c /data/adb/modules/ts18_log_governor/bin/ts18-logctl status
 ```
 
-**Observed (repository source and fixtures):** Profiles:
+**Observed:** Repository source and fixtures define these profiles:
 
 - `stock`: restore the service state captured at first boot.
 - `quiet`: stop ylog/yloglite/ylogw plus explicitly approved candidates.
@@ -28,7 +28,7 @@ camera, ACC sleep/wake and affected system-app first launch, then approve one se
 su -c /data/adb/modules/ts18_log_governor/bin/ts18-logctl approve vendor.mlogservice
 ```
 
-**Observed (repository source and fixtures):** Core Android `logd`, crash/tombstone, audit, and
+**Observed:** Repository source and fixtures show that core Android `logd`, crash/tombstone, audit, and
 watchdog infrastructure is never targeted. Uninstall reports success only when captured-baseline
 restoration succeeds.
 

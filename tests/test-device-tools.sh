@@ -52,11 +52,39 @@ fi
 
 TS18_YLOG_WINDOW_SECONDS=60 sh "$ctl" ylog-window
 window_token=$(cat "$state/ylog-window-token")
-window_pid=$(cat "$state/ylog-window-pid")
+window_pid=$(cut -f1 "$state/ylog-window-pid")
+window_pid_token=$(cut -f2 "$state/ylog-window-pid")
+[[ $window_pid_token == "$window_token" ]]
 sh "$ctl" stock
 sh "$ctl" expire-ylog-window "$window_token"
 [[ $(sh "$ctl" current) == stock ]]
-kill "$window_pid" 2>/dev/null || true
+cancelled_cmdline=''
+if [[ -r /proc/$window_pid/cmdline ]]; then
+  cancelled_cmdline=$(tr '\000' ' ' <"/proc/$window_pid/cmdline")
+fi
+if kill -0 "$window_pid" 2>/dev/null &&
+  [[ $cancelled_cmdline == *ylog-window-timer*"$window_token"* ]]; then
+  printf '%s\n' 'cancelled ylog timer is still running' >&2
+  exit 1
+fi
+
+# Simulate a reboot killing the userspace timer while the bounded window is
+# still active. apply-current must recreate a timer for the remaining duration.
+TS18_YLOG_WINDOW_SECONDS=60 sh "$ctl" ylog-window
+window_token=$(cat "$state/ylog-window-token")
+window_pid=$(cut -f1 "$state/ylog-window-pid")
+kill -TERM "$window_pid"
+for _ in 1 2 3 4 5; do
+  kill -0 "$window_pid" 2>/dev/null || break
+  sleep 1
+done
+sh "$ctl" apply-current
+rearmed_pid=$(cut -f1 "$state/ylog-window-pid")
+rearmed_token=$(cut -f2 "$state/ylog-window-pid")
+[[ $rearmed_token == "$window_token" ]]
+[[ $rearmed_pid != "$window_pid" ]]
+kill -0 "$rearmed_pid"
+sh "$ctl" quiet
 
 # The storage deletion mount-point guard must pass awk field references intact through root.
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
@@ -68,9 +96,11 @@ checksum_source="$tmp/checksum-source"
 mkdir -p "$checksum_source/sub" "$tmp/archives"
 printf 'alpha\n' >"$checksum_source/a file.txt"
 printf 'beta\n' >"$checksum_source/sub/b.txt"
+printf 'nested checksum evidence\n' >"$checksum_source/sub/checksums.sha256"
 [[ $(ts18_root_sha256 "$checksum_source/a file.txt") == \
   "$(sha256sum "$checksum_source/a file.txt" | awk '{print $1}')" ]]
 ts18_write_checksums "$checksum_source" "$checksum_source/checksums.sha256"
+grep -Fq './sub/checksums.sha256' "$checksum_source/checksums.sha256"
 (cd "$checksum_source" && sha256sum -c checksums.sha256 >/dev/null)
 (cd "$tmp" && ts18_make_zip checksum-source archives/relative-output.zip)
 unzip -t "$tmp/archives/relative-output.zip" >/dev/null

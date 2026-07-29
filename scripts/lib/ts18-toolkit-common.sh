@@ -70,7 +70,7 @@ ts18_root_sha256() {
 }
 
 ts18_write_checksums() {
-  local source_dir=$1 output_file=$2 output_dir output_name temporary hash file
+  local source_dir=$1 output_file=$2 output_dir output_name output_relative temporary hash file
   local -a files=()
   source_dir=$(CDPATH='' cd -- "$source_dir" && pwd -P) ||
     ts18_die "Cannot resolve checksum source directory: $source_dir"
@@ -78,10 +78,18 @@ ts18_write_checksums() {
     ts18_die "Cannot resolve checksum output directory: $(dirname -- "$output_file")"
   output_name=$(basename -- "$output_file")
   output_file="$output_dir/$output_name"
+  output_relative=''
+  case "$output_file" in
+    "$source_dir"/*) output_relative="./${output_file#"$source_dir"/}" ;;
+  esac
   temporary="$output_file.tmp.$$"
   mapfile -d '' -t files < <(
     cd "$source_dir"
-    find . -type f ! -name "$output_name" -print0 | LC_ALL=C sort -z
+    if [[ -n $output_relative ]]; then
+      find . -type f ! -path "$output_relative" -print0
+    else
+      find . -type f -print0
+    fi | LC_ALL=C sort -z
   )
   rm -f -- "$temporary"
   : >"$temporary"

@@ -1,6 +1,6 @@
 # TS18 device toolkit
 
-**Observed (repository source):** The toolkit is separate from the bridge runtime. Installing or
+**Observed:** Repository source shows that the toolkit is separate from the bridge runtime. Installing or
 enabling the LSPosed module is not required to run these scripts.
 
 ## Safety and execution order
@@ -25,14 +25,14 @@ bash scripts/collect-ts18-evidence.sh \
   --duration 180
 ```
 
-**Observed (repository source and fixtures):** Omit `--package` to discover candidates through
+**Observed:** Repository source and fixtures show that omitting `--package` discovers candidates through
 installed music-player components. The bundle records application ID, version/code, UID/shared
 identity evidence, base/split APK paths and hashes, processes, components, critical-package state,
 Magisk inventory, one full log lane and per-UID lanes when supported. It starts logging before the
 scenario, stops and waits for every writer, copies immutable staging data, writes checksums, and
 requires `unzip -t` success.
 
-**Observed (collector acceptance rule):** An Auxio capture is not accepted as app-logging proof
+**Observed:** The collector acceptance rule does not accept an Auxio capture as app-logging proof
 unless it includes `AUXIO_TS_CAPTURE_CANARY`. Package, version, flavour and hash are evidence—not
 preconditions.
 
@@ -61,7 +61,7 @@ bash scripts/ts18-music-identity-reset.sh prepare-stock-restore
 bash scripts/ts18-music-identity-reset.sh verify-stock
 ```
 
-**Observed (repository source and fixtures):** `reset-user-state` requires root and first proves a
+**Observed:** Repository source and fixtures show that `reset-user-state` requires root and first proves a
 stock read-only APK path, recorded privileged/shared identity, and absence of an enabled candidate
 Magisk overlay. It retains app data unless `--confirm-clear-data` is supplied. The tool never edits
 Android package databases, policy XML, or a system APK. The modified `com.tw.music_ac.apk`
@@ -91,10 +91,10 @@ bash scripts/ts18-storage-pressure.sh apply \
   --confirm APPLY_REVIEWED_POLICY
 ```
 
-**Observed (supplied TS18 capture):** `/system` and `/vendor` are read-only dm-backed filesystems;
+**Observed:** The supplied TS18 capture shows `/system` and `/vendor` as read-only dm-backed filesystems;
 their utilisation percentages cannot be lowered through live deletion.
 
-**Observed (repository source and fixtures):** The tool only inventories those partitions.
+**Observed:** Repository source and fixtures show that the tool only inventories those partitions.
 Application is limited to exact reviewed writable log paths and reversible `pm disable-user`;
 protected vehicle/system packages (including `com.tw.music`) and user media are rejected. Every
 deleted log target is archived first. Package rollback is supported; deleted-path rollback
@@ -105,7 +105,7 @@ requires the apply-run archive.
 Build or download `ts18-log-governor.zip`, install it in Magisk, reboot, then follow
 `log-governor/README.md`.
 
-**Observed (repository source and fixtures):** Installation defaults to `stock`. `ylog-window` is
+**Observed:** Repository source and fixtures show that installation defaults to `stock`. `ylog-window` is
 bounded to ten minutes and returns to quiet only if its generation token is still current.
 Unapproved non-ylog services are not changed by `quiet` or `full-diagnostics`. Core Android
 logging, crash, audit and watchdog services are never candidates.
