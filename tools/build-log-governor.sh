@@ -4,6 +4,9 @@ set -euo pipefail
 repo_root=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 source_dir="$repo_root/log-governor"
 output=${1:-"$repo_root/build/ts18-log-governor.zip"}
+if [[ $output != /* ]]; then
+  output="$repo_root/$output"
+fi
 mkdir -p "$(dirname "$output")"
 rm -f "$output"
 (
