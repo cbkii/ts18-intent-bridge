@@ -1,29 +1,14 @@
-name: Android build
+name: Toolkit validation
 
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
-      - name: Build debug APK
-        run: |
-          set -euo pipefail
-          if [ -x ./gradlew ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
-          "$GRADLE" assembleDebug test --no-daemon
       - name: Validate device toolkit
         run: |
           set -euo pipefail
@@ -42,9 +27,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p build/artifacts/toolkit
-          apk="$(find app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
-          test -n "$apk"
-          cp "$apk" build/artifacts/ts18-intent-bridge-debug.apk
           bash tools/build-log-governor.sh build/artifacts/ts18-log-governor.zip
           cp -a scripts tools docs/DEVICE_TOOLKIT.md build/artifacts/toolkit/
           rm -f build/artifacts/ts18-device-toolkit.zip
@@ -61,25 +43,13 @@ jobs:
           fi
           (
             cd build/artifacts
-            sha256sum ts18-intent-bridge-debug.apk >ts18-intent-bridge-debug.apk.sha256
             sha256sum ts18-log-governor.zip >ts18-log-governor.zip.sha256
             sha256sum ts18-device-toolkit.zip >ts18-device-toolkit.zip.sha256
-            sha256sum -c ts18-intent-bridge-debug.apk.sha256
             sha256sum -c ts18-log-governor.zip.sha256
             sha256sum -c ts18-device-toolkit.zip.sha256
           )
-          echo "apk_sha=$(sha256sum build/artifacts/ts18-intent-bridge-debug.apk | awk '{print $1}')" >>"$GITHUB_OUTPUT"
           echo "governor_sha=$(sha256sum build/artifacts/ts18-log-governor.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
           echo "toolkit_sha=$(sha256sum build/artifacts/ts18-device-toolkit.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
-      - name: Upload bridge debug APK
-        id: apk
-        uses: actions/upload-artifact@v4
-        with:
-          name: ts18-intent-bridge-debug
-          path: |
-            build/artifacts/ts18-intent-bridge-debug.apk
-            build/artifacts/ts18-intent-bridge-debug.apk.sha256
-          retention-days: 14
       - name: Upload vendor log governor
         id: governor
         uses: actions/upload-artifact@v4
@@ -101,31 +71,24 @@ jobs:
       - name: Write artifact summary
         if: always()
         env:
-          APK_URL: ${{ steps.apk.outputs.artifact-url }}
           GOVERNOR_URL: ${{ steps.governor.outputs.artifact-url }}
           TOOLKIT_URL: ${{ steps.toolkit.outputs.artifact-url }}
-          APK_SHA: ${{ steps.prepare.outputs.apk_sha }}
           GOVERNOR_SHA: ${{ steps.prepare.outputs.governor_sha }}
           TOOLKIT_SHA: ${{ steps.prepare.outputs.toolkit_sha }}
         run: |
           {
-            echo '## TS18 build artifacts'
+            echo '## TS18 toolkit artifacts'
             echo
             echo '| Artifact | Download | SHA-256 |'
             echo '|---|---|---|'
-            if [[ -n "${APK_URL}" && -n "${APK_SHA}" ]]; then
-              echo "| Intent Bridge debug APK | [Download](${APK_URL}) | \`${APK_SHA}\` |"
-            else
-              echo '| Intent Bridge debug APK | Unavailable — build or upload did not complete | — |'
-            fi
             if [[ -n "${GOVERNOR_URL}" && -n "${GOVERNOR_SHA}" ]]; then
               echo "| Vendor Log Governor Magisk ZIP | [Download](${GOVERNOR_URL}) | \`${GOVERNOR_SHA}\` |"
             else
-              echo '| Vendor Log Governor Magisk ZIP | Unavailable — build or upload did not complete | — |'
+              echo '| Vendor Log Governor Magisk ZIP | Unavailable — validation or upload did not complete | — |'
             fi
             if [[ -n "${TOOLKIT_URL}" && -n "${TOOLKIT_SHA}" ]]; then
               echo "| Termux/device toolkit ZIP | [Download](${TOOLKIT_URL}) | \`${TOOLKIT_SHA}\` |"
             else
-              echo '| Termux/device toolkit ZIP | Unavailable — build or upload did not complete | — |'
+              echo '| Termux/device toolkit ZIP | Unavailable — validation or upload did not complete | — |'
             fi
           } >>"$GITHUB_STEP_SUMMARY"
