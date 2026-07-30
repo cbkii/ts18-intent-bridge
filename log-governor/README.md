@@ -4,8 +4,9 @@
 vendor diagnostic collectors only and does not modify the TS18 Intent Bridge APK.
 
 **Observed:** Repository source and fixtures show that the default profile is `stock`, so installation
-alone changes no service state. The first profile command records the baseline before changing any
-service. First run:
+alone changes no service state. Installation or service startup creates the baseline on first boot
+before any profile changes service state. That same baseline is subsequently reused by `stock`.
+First run:
 
 ```sh
 su -c /data/adb/modules/ts18_log_governor/bin/ts18-logctl probe
@@ -14,7 +15,7 @@ su -c /data/adb/modules/ts18_log_governor/bin/ts18-logctl status
 
 **Observed:** Repository source and fixtures define these profiles:
 
-- `stock`: restore the service state captured at first boot.
+- `stock`: restore the baseline captured during installation or service startup on first boot.
 - `quiet`: stop ylog/yloglite/ylogw plus explicitly approved candidates.
 - `ylog-window`: start ylog collectors for 10 minutes, then return to `quiet`.
 - `full-diagnostics`: start ylog defaults plus explicitly approved vendor logging candidates for
