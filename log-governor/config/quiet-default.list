@@ -1,0 +1,4 @@
+# Low-risk first profile. Modem/vendor candidates require explicit approval after probe/transport tests.
+ylog
+yloglite
+ylogw

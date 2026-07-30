@@ -1,27 +1,94 @@
-name: Android build
+name: Toolkit validation
 
 on:
   push:
   pull_request:
 
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: 8.10.2
-      - name: Build debug APK
+      - name: Validate device toolkit
         run: |
-          if [ -x ./gradlew ]; then GRADLE=./gradlew; else GRADLE=gradle; fi
-          "$GRADLE" assembleDebug test --no-daemon
-      - name: Shell syntax
-        run: bash -n scripts/*.sh
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck zip unzip
+          find scripts tools log-governor tests -type f \
+            \( -name '*.sh' -o -name 'ts18-logctl' \) -print0 |
+            xargs -0 -n1 bash -n
+          find scripts tools log-governor tests -type f \
+            \( -name '*.sh' -o -name 'ts18-logctl' \) -print0 |
+            xargs -0 shellcheck -x
+          PYTHONPYCACHEPREFIX="${RUNNER_TEMP}/ts18-python-cache" python3 -m compileall -q tools
+          bash tests/test-device-tools.sh
+      - name: Prepare downloadable artifacts
+        id: prepare
+        run: |
+          set -euo pipefail
+          mkdir -p build/artifacts/toolkit
+          bash tools/build-log-governor.sh build/artifacts/ts18-log-governor.zip
+          cp -a scripts tools docs/DEVICE_TOOLKIT.md build/artifacts/toolkit/
+          rm -f build/artifacts/ts18-device-toolkit.zip
+          find build/artifacts/toolkit -exec touch -h -d '@315532800' {} +
+          (
+            cd build/artifacts/toolkit
+            find . -type f -print0 | LC_ALL=C sort -z |
+              xargs -0 zip -q -0 -X ../ts18-device-toolkit.zip
+          )
+          if unzip -Z1 build/artifacts/ts18-device-toolkit.zip |
+            grep -Eq '(^|/)(__pycache__/|[^/]+\.pyc$)'; then
+            echo '::error::Generated Python bytecode entered the toolkit archive.'
+            exit 1
+          fi
+          (
+            cd build/artifacts
+            sha256sum ts18-log-governor.zip >ts18-log-governor.zip.sha256
+            sha256sum ts18-device-toolkit.zip >ts18-device-toolkit.zip.sha256
+            sha256sum -c ts18-log-governor.zip.sha256
+            sha256sum -c ts18-device-toolkit.zip.sha256
+          )
+          echo "governor_sha=$(sha256sum build/artifacts/ts18-log-governor.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
+          echo "toolkit_sha=$(sha256sum build/artifacts/ts18-device-toolkit.zip | awk '{print $1}')" >>"$GITHUB_OUTPUT"
+      - name: Upload vendor log governor
+        id: governor
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts18-log-governor
+          path: |
+            build/artifacts/ts18-log-governor.zip
+            build/artifacts/ts18-log-governor.zip.sha256
+          retention-days: 14
+      - name: Upload device toolkit
+        id: toolkit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts18-device-toolkit
+          path: |
+            build/artifacts/ts18-device-toolkit.zip
+            build/artifacts/ts18-device-toolkit.zip.sha256
+          retention-days: 14
+      - name: Write artifact summary
+        if: always()
+        env:
+          GOVERNOR_URL: ${{ steps.governor.outputs.artifact-url }}
+          TOOLKIT_URL: ${{ steps.toolkit.outputs.artifact-url }}
+          GOVERNOR_SHA: ${{ steps.prepare.outputs.governor_sha }}
+          TOOLKIT_SHA: ${{ steps.prepare.outputs.toolkit_sha }}
+        run: |
+          {
+            echo '## TS18 toolkit artifacts'
+            echo
+            echo '| Artifact | Download | SHA-256 |'
+            echo '|---|---|---|'
+            if [[ -n "${GOVERNOR_URL}" && -n "${GOVERNOR_SHA}" ]]; then
+              echo "| Vendor Log Governor Magisk ZIP | [Download](${GOVERNOR_URL}) | \`${GOVERNOR_SHA}\` |"
+            else
+              echo '| Vendor Log Governor Magisk ZIP | Unavailable — validation or upload did not complete | — |'
+            fi
+            if [[ -n "${TOOLKIT_URL}" && -n "${TOOLKIT_SHA}" ]]; then
+              echo "| Termux/device toolkit ZIP | [Download](${TOOLKIT_URL}) | \`${TOOLKIT_SHA}\` |"
+            else
+              echo '| Termux/device toolkit ZIP | Unavailable — validation or upload did not complete | — |'
+            fi
+          } >>"$GITHUB_STEP_SUMMARY"

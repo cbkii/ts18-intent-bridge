@@ -1,0 +1,333 @@
+#!/system/bin/sh
+# Reversible, no-polling vendor diagnostic service controller.
+set -eu
+
+MODDIR=${TS18_LOG_GOVERNOR_MODDIR:-${0%/bin/ts18-logctl}}
+STATE_DIR=${TS18_LOG_GOVERNOR_STATE_DIR:-/data/adb/ts18-log-governor}
+CANDIDATES="$MODDIR/config/candidates.list"
+QUIET_DEFAULT="$MODDIR/config/quiet-default.list"
+BASELINE="$STATE_DIR/baseline.tsv"
+APPROVED="$STATE_DIR/approved.list"
+PROFILE="$STATE_DIR/profile"
+WINDOW_SECONDS=${TS18_YLOG_WINDOW_SECONDS:-600}
+WINDOW_TOKEN="$STATE_DIR/ylog-window-token"
+WINDOW_DEADLINE="$STATE_DIR/ylog-window-deadline"
+WINDOW_PID="$STATE_DIR/ylog-window-pid"
+LOCK="$STATE_DIR/lock"
+
+mkdir -p "$STATE_DIR"
+touch "$APPROVED"
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_service() {
+  case "$1" in
+    ''|*[!A-Za-z0-9_.@-]*) return 1 ;;
+    logd|tombstoned|audioserver|system_server|watchdog*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+services() {
+  sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$CANDIDATES"
+}
+
+service_exists() {
+  [ -n "$(getprop "init.svc.$1")" ]
+}
+
+service_state() {
+  getprop "init.svc.$1"
+}
+
+set_service() {
+  service=$1
+  operation=$2
+  valid_service "$service" || die "Refusing unsafe service name: $service"
+  service_exists "$service" || {
+    printf 'SKIP missing %s\n' "$service"
+    return 0
+  }
+  setprop "ctl.$operation" "$service"
+  printf '%s %s requested; state=%s\n' "$operation" "$service" "$(service_state "$service")"
+}
+
+with_lock() {
+  attempts=0
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    attempts=$((attempts + 1))
+    [ "$attempts" -lt 20 ] || die 'Governor is busy.'
+    sleep 1
+  done
+  trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT INT TERM
+  "$@"
+  rmdir "$LOCK" 2>/dev/null || true
+  trap - EXIT INT TERM
+}
+
+init_baseline() {
+  [ -s "$BASELINE" ] && return 0
+  temporary="$BASELINE.tmp"
+  : >"$temporary"
+  services | while IFS= read -r service; do
+    valid_service "$service" || die "Unsafe candidate: $service"
+    printf '%s\t%s\n' "$service" "$(service_state "$service")" >>"$temporary"
+  done
+  mv "$temporary" "$BASELINE"
+}
+
+apply_stock() {
+  init_baseline
+  while IFS="$(printf '\t')" read -r service state; do
+    case "$state" in
+      running|restarting) set_service "$service" start ;;
+      stopped|disabled) set_service "$service" stop ;;
+      *) printf 'SKIP baseline-unavailable %s state=%s\n' "$service" "$state" ;;
+    esac
+  done <"$BASELINE"
+}
+
+quiet_services() {
+  {
+    sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$QUIET_DEFAULT"
+    sed -e 's/#.*//' -e '/^[[:space:]]*$/d' "$APPROVED"
+  } | awk '!seen[$0]++'
+}
+
+apply_quiet() {
+  quiet_services | while IFS= read -r service; do
+    set_service "$service" stop
+  done
+}
+
+apply_full() {
+  quiet_services | while IFS= read -r service; do
+    set_service "$service" start
+  done
+}
+
+clear_ylog_window_state() {
+  rm -f "$WINDOW_TOKEN" "$WINDOW_DEADLINE" "$WINDOW_PID"
+}
+
+timer_process_matches() {
+  pid=$1
+  token=$2
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  command_line=$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)
+  case "$command_line" in
+    *ylog-window-timer*"$token"*|*expire-ylog-window*"$token"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+stop_ylog_timer() {
+  current_token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+  [ -s "$WINDOW_PID" ] || return 0
+  timer_record=$(cat "$WINDOW_PID" 2>/dev/null || true)
+  timer_pid=${timer_record%%	*}
+  timer_token=${timer_record#*	}
+  case "$timer_pid" in
+    ''|*[!0-9]*) return 0 ;;
+  esac
+  if [ "$timer_token" != "$current_token" ] ||
+    ! kill -0 "$timer_pid" 2>/dev/null ||
+    ! timer_process_matches "$timer_pid" "$timer_token"; then
+    return 0
+  fi
+  kill -TERM "$timer_pid" 2>/dev/null || return 0
+  attempts=5
+  while kill -0 "$timer_pid" 2>/dev/null && [ "$attempts" -gt 0 ]; do
+    sleep 1
+    attempts=$((attempts - 1))
+  done
+  if kill -0 "$timer_pid" 2>/dev/null &&
+    timer_process_matches "$timer_pid" "$timer_token"; then
+    kill -KILL "$timer_pid" 2>/dev/null || true
+  fi
+}
+
+invalidate_ylog_window() {
+  stop_ylog_timer
+  clear_ylog_window_state
+}
+
+schedule_ylog_timer() {
+  token=$1
+  seconds=$2
+  case "$seconds" in
+    ''|*[!0-9]*|0) die 'Ylog timer duration must be a positive integer.' ;;
+  esac
+  if [ -s "$WINDOW_PID" ]; then
+    timer_record=$(cat "$WINDOW_PID" 2>/dev/null || true)
+    timer_pid=${timer_record%%	*}
+    timer_token=${timer_record#*	}
+    if [ "$timer_token" = "$token" ] &&
+      kill -0 "$timer_pid" 2>/dev/null &&
+      timer_process_matches "$timer_pid" "$timer_token"; then
+      return 0
+    fi
+  fi
+  rm -f "$WINDOW_PID"
+  sh "$0" ylog-window-timer "$token" "$seconds" >/dev/null 2>&1 &
+  timer_pid=$!
+  printf '%s\t%s\n' "$timer_pid" "$token" >"$WINDOW_PID"
+}
+
+run_ylog_timer() {
+  token=$1
+  seconds=$2
+  timer_child=''
+  case "$seconds" in
+    ''|*[!0-9]*|0) die 'Ylog timer duration must be a positive integer.' ;;
+  esac
+  trap 'kill -TERM "$timer_child" 2>/dev/null || true; exit 0' INT TERM
+  sleep "$seconds" &
+  timer_child=$!
+  wait "$timer_child" || exit 0
+  trap - INT TERM
+  exec sh "$0" expire-ylog-window "$token"
+}
+
+expire_ylog_window() {
+  expected=$1
+  current=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+  profile=$(cat "$PROFILE" 2>/dev/null || printf stock)
+  if [ "$current" != "$expected" ] || [ "$profile" != ylog-window ]; then
+    printf 'SKIP stale ylog-window timer token=%s current=%s profile=%s\n' \
+      "$expected" "$current" "$profile"
+    return 0
+  fi
+  # The timer process may be expiring its own window, so do not signal the
+  # recorded PID from this path.
+  clear_ylog_window_state
+  apply_quiet
+  printf '%s\n' quiet >"$PROFILE"
+}
+
+start_ylog_window() {
+  case "$WINDOW_SECONDS" in
+    ''|*[!0-9]*) die 'TS18_YLOG_WINDOW_SECONDS must be an integer.' ;;
+  esac
+  if [ "$WINDOW_SECONDS" -lt 60 ] || [ "$WINDOW_SECONDS" -gt 3600 ]; then
+    die 'Ylog window must be 60..3600 seconds.'
+  fi
+  invalidate_ylog_window
+  for service in ylog yloglite ylogw; do
+    set_service "$service" start
+  done
+  printf '%s\n' ylog-window >"$PROFILE"
+  deadline=$(( $(date +%s) + WINDOW_SECONDS ))
+  token="$deadline-$$"
+  printf '%s\n' "$token" >"$WINDOW_TOKEN"
+  printf '%s\n' "$deadline" >"$WINDOW_DEADLINE"
+  schedule_ylog_timer "$token" "$WINDOW_SECONDS"
+}
+
+set_profile() {
+  requested=$1
+  init_baseline
+  case "$requested" in
+    stock)
+      invalidate_ylog_window
+      apply_stock
+      ;;
+    quiet)
+      invalidate_ylog_window
+      apply_quiet
+      ;;
+    full-diagnostics)
+      invalidate_ylog_window
+      apply_full
+      ;;
+    ylog-window)
+      start_ylog_window
+      return
+      ;;
+    *) die "Unknown profile: $requested" ;;
+  esac
+  printf '%s\n' "$requested" >"$PROFILE"
+}
+
+apply_current() {
+  current=$(cat "$PROFILE" 2>/dev/null || printf '%s' stock)
+  case "$current" in
+    ylog-window)
+      deadline=$(cat "$WINDOW_DEADLINE" 2>/dev/null || printf '0')
+      token=$(cat "$WINDOW_TOKEN" 2>/dev/null || printf none)
+      now=$(date +%s)
+      case "$deadline" in
+        ''|*[!0-9]*) deadline=0 ;;
+      esac
+      if [ "$token" != none ] && [ "$deadline" -gt "$now" ]; then
+        for service in ylog yloglite ylogw; do set_service "$service" start; done
+        schedule_ylog_timer "$token" "$((deadline - now))"
+      else
+        if [ "$token" = none ]; then
+          set_profile quiet
+        else
+          expire_ylog_window "$token"
+        fi
+      fi
+      ;;
+    *) set_profile "$current" ;;
+  esac
+}
+
+status() {
+  printf 'profile=%s\n' "$(cat "$PROFILE" 2>/dev/null || printf stock)"
+  printf 'ylog_window_deadline=%s\n' "$(cat "$WINDOW_DEADLINE" 2>/dev/null || printf none)"
+  services | while IFS= read -r service; do
+    approved=false
+    grep -Fxq "$service" "$APPROVED" && approved=true
+    printf 'service=%s state=%s approved_for_quiet=%s\n' \
+      "$service" "$(service_state "$service")" "$approved"
+  done
+}
+
+probe() {
+  stamp=$(date +%Y%m%d-%H%M%S)
+  report="$STATE_DIR/probe-$stamp"
+  mkdir -p "$report"
+  status >"$report/status.txt"
+  getprop >"$report/getprop.txt"
+  ps -A -o USER,PID,PPID,NAME,ARGS >"$report/processes.txt" 2>&1 || true
+  df -k >"$report/df.txt" 2>&1 || true
+  grep -R -n -E 'service[[:space:]]+.*(ylog|slog|modem|mlog|cplog|log_service)' \
+    /system/etc/init /vendor/etc/init /odm/etc/init >"$report/init-definitions.txt" 2>&1 || true
+  printf 'report=%s\n' "$report"
+}
+
+approve() {
+  service=$1
+  valid_service "$service" || die "Unsafe service name: $service"
+  services | grep -Fxq "$service" || die "Not a known candidate: $service"
+  grep -Fxq "$service" "$APPROVED" || printf '%s\n' "$service" >>"$APPROVED"
+  printf 'approved=%s\n' "$service"
+}
+
+command=${1:-status}
+case "$command" in
+  init-baseline) with_lock init_baseline ;;
+  apply-current) with_lock apply_current ;;
+  expire-ylog-window)
+    [ "$#" -eq 2 ] || die 'Internal timer token is required.'
+    with_lock expire_ylog_window "$2"
+    ;;
+  ylog-window-timer)
+    [ "$#" -eq 3 ] || die 'Internal timer token and duration are required.'
+    run_ylog_timer "$2" "$3"
+    ;;
+  stock|quiet|full-diagnostics|ylog-window) with_lock set_profile "$command" ;;
+  current) cat "$PROFILE" 2>/dev/null || printf '%s\n' stock ;;
+  status) status ;;
+  probe) probe ;;
+  approve)
+    [ "$#" -eq 2 ] || die 'Usage: ts18-logctl approve SERVICE'
+    approve "$2"
+    ;;
+  *) die 'Commands: status, probe, approve SERVICE, stock, quiet, ylog-window, full-diagnostics' ;;
+esac
