@@ -70,7 +70,7 @@ ts18_root_sha256() {
 }
 
 ts18_write_checksums() {
-  local source_dir=$1 output_file=$2 output_dir output_name output_relative temporary hash file
+  local source_dir=$1 output_file=$2 output_dir output_name output_relative list_file list_relative temporary hash file
   local -a files=()
   source_dir=$(CDPATH='' cd -- "$source_dir" && pwd -P) ||
     ts18_die "Cannot resolve checksum source directory: $source_dir"
@@ -82,16 +82,34 @@ ts18_write_checksums() {
   case "$output_file" in
     "$source_dir"/*) output_relative="./${output_file#"$source_dir"/}" ;;
   esac
+  list_file="$output_file.files.$$"
+  list_relative=''
+  case "$list_file" in
+    "$source_dir"/*) list_relative="./${list_file#"$source_dir"/}" ;;
+  esac
   temporary="$output_file.tmp.$$"
-  mapfile -d '' -t files < <(
-    cd "$source_dir"
-    if [[ -n $output_relative ]]; then
+  rm -f -- "$list_file" "$temporary"
+  if ! (
+    cd "$source_dir" || exit
+    set -o pipefail
+    if [[ -n $output_relative && -n $list_relative ]]; then
+      find . -type f ! -path "$output_relative" ! -path "$list_relative" -print0
+    elif [[ -n $output_relative ]]; then
       find . -type f ! -path "$output_relative" -print0
+    elif [[ -n $list_relative ]]; then
+      find . -type f ! -path "$list_relative" -print0
     else
       find . -type f -print0
     fi | LC_ALL=C sort -z
-  )
-  rm -f -- "$temporary"
+  ) >"$list_file"; then
+    rm -f -- "$list_file" "$temporary"
+    ts18_die 'Could not enumerate checksum bundle entries.'
+  fi
+  if ! mapfile -d '' -t files <"$list_file"; then
+    rm -f -- "$list_file" "$temporary"
+    ts18_die 'Could not read checksum bundle entries.'
+  fi
+  rm -f -- "$list_file"
   : >"$temporary"
   for file in "${files[@]}"; do
     if ! hash=$(ts18_sha256 "$source_dir/${file#./}"); then
