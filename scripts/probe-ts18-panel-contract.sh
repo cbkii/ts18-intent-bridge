@@ -55,10 +55,12 @@ case $action in
   observe|play|pause|play-pause|next|previous) ;;
   *) ts18_die 'Unsupported action.' ;;
 esac
-if [[ ! $duration =~ ^[0-9]+$ ]] || ((duration < 5 || duration > 300)); then
+if [[ ! $duration =~ ^[0-9]{1,3}$ ]] ||
+  ((10#$duration < 5 || 10#$duration > 300)); then
   ts18_die 'Duration must be 5..300 seconds.'
 fi
-if [[ ! $repeats =~ ^[0-9]+$ ]] || ((repeats < 1 || repeats > 5)); then
+if [[ ! $repeats =~ ^[0-9]{1,3}$ ]] ||
+  ((10#$repeats < 1 || 10#$repeats > 5)); then
   ts18_die 'Repeats must be 1..5.'
 fi
 
