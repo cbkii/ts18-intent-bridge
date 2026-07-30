@@ -73,7 +73,7 @@ fi
 TS18_YLOG_WINDOW_SECONDS=60 sh "$ctl" ylog-window
 window_token=$(cat "$state/ylog-window-token")
 window_pid=$(cut -f1 "$state/ylog-window-pid")
-kill -TERM "$window_pid"
+kill -TERM "$window_pid" 2>/dev/null || true
 for _ in 1 2 3 4 5; do
   kill -0 "$window_pid" 2>/dev/null || break
   sleep 1
@@ -86,6 +86,14 @@ rearmed_token=$(cut -f2 "$state/ylog-window-pid")
 kill -0 "$rearmed_pid"
 sh "$ctl" quiet
 
+panel_error=''
+if panel_error=$(bash "$repo_root/scripts/probe-ts18-panel-contract.sh" \
+  --duration 000400 --output "$tmp/panel-invalid" 2>&1); then
+  printf '%s\n' 'panel probe accepted an out-of-range decimal duration' >&2
+  exit 1
+fi
+grep -Fq 'Duration must be 5..300 seconds.' <<<"$panel_error"
+
 # The storage deletion mount-point guard must pass awk field references intact through root.
 # shellcheck source=scripts/lib/ts18-toolkit-common.sh
 source "$repo_root/scripts/lib/ts18-toolkit-common.sh"
@@ -97,6 +105,24 @@ mkdir -p "$checksum_source/sub" "$tmp/archives"
 printf 'alpha\n' >"$checksum_source/a file.txt"
 printf 'beta\n' >"$checksum_source/sub/b.txt"
 printf 'nested checksum evidence\n' >"$checksum_source/sub/checksums.sha256"
+printf 'captured payload\n' >"$checksum_source/captured-file"
+failing_find_bin="$tmp/failing-find-bin"
+mkdir -p "$failing_find_bin"
+cat >"$failing_find_bin/find" <<'EOF'
+#!/usr/bin/env bash
+printf './captured-file\0'
+exit 42
+EOF
+chmod +x "$failing_find_bin/find"
+printf 'existing manifest\n' >"$checksum_source/checksums.sha256"
+if (
+  export PATH="$failing_find_bin:$PATH"
+  ts18_write_checksums "$checksum_source" "$checksum_source/checksums.sha256"
+) >/dev/null 2>&1; then
+  printf '%s\n' 'checksum enumeration failure was not propagated' >&2
+  exit 1
+fi
+grep -Fxq 'existing manifest' "$checksum_source/checksums.sha256"
 [[ $(ts18_root_sha256 "$checksum_source/a file.txt") == \
   "$(sha256sum "$checksum_source/a file.txt" | awk '{print $1}')" ]]
 ts18_write_checksums "$checksum_source" "$checksum_source/checksums.sha256"
